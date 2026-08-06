@@ -27,9 +27,9 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar lg:flex lg:flex-col">
+      <aside className="hidden w-72 shrink-0 border-r border-sidebar-border/70 bg-sidebar/95 lg:flex lg:flex-col shadow-sm">
         <SidebarBrand />
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto px-3 py-3">
           <NavLinks />
         </div>
       </aside>
@@ -47,7 +47,7 @@ export function Sidebar() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 p-0">
-          <SheetHeader className="border-b border-sidebar-border px-5 py-4">
+          <SheetHeader className="border-b border-sidebar-border/70 px-5 py-4">
             <SheetTitle className="text-left text-base font-semibold">
               SBBT E-Grow
             </SheetTitle>
@@ -55,7 +55,7 @@ export function Sidebar() {
               Live Plant E-commerce ERP
             </SheetDescription>
           </SheetHeader>
-          <div className="overflow-y-auto">
+          <div className="overflow-y-auto px-3 py-3">
             <NavLinks onNavigate={() => setOpen(false)} />
           </div>
         </SheetContent>

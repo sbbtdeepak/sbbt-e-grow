@@ -17,7 +17,7 @@ export async function TopNavbar() {
   const email = user?.email ?? "Unknown user";
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/80 bg-background/80 px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
       <Sidebar />
       <div className="flex-1" />
       <UserMenu email={email} fullName={user?.user_metadata?.full_name} />

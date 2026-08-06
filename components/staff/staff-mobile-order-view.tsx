@@ -1,4 +1,4 @@
-  "use client";
+"use client";
 
 import { useMemo } from "react";
 import { Check, Loader2 } from "lucide-react";
@@ -139,12 +139,13 @@ export function MobileOrderHeader({
   orderDate: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-2">
-      <div className="flex flex-col">
+    <div className="flex items-start justify-between gap-3">
+      <div className="flex min-w-0 flex-col">
         <span className="font-mono text-xs font-medium text-muted-foreground">
           #{orderNo.slice(0, 8)}
         </span>
-        <span className="text-sm font-semibold">{seller}</span><span className="text-[10px] text-muted-foreground">{orderDate}</span>
+        <span className="text-sm font-semibold">{seller}</span>
+        <span className="text-[11px] text-muted-foreground">{orderDate}</span>
       </div>
       <MobileChip tone="primary">{marketplace}</MobileChip>
     </div>
@@ -157,7 +158,7 @@ export function MobileQtyGrid({
   items: { label: string; value: string | number; tone?: string }[];
 }) {
   return (
-    <div className="grid grid-cols-3 gap-2 rounded-xl bg-muted/40 p-3">
+    <div className="grid grid-cols-3 gap-3 rounded-xl bg-muted/40 p-3">
       {items.map((item) => (
         <div key={item.label} className="flex flex-col">
           <MobileLabel>{item.label}</MobileLabel>
@@ -174,7 +175,6 @@ export function MobileQtyGrid({
 
 export function MobileEditableLine({
   line,
-  
   onChange,
   onToggle,
   selected,
@@ -186,7 +186,6 @@ export function MobileEditableLine({
   extraFields,
 }: {
   line: MobileLine;
-  
   onChange: (patch: Record<string, string>) => void;
   onToggle?: (selected: boolean) => void;
   selected?: boolean;

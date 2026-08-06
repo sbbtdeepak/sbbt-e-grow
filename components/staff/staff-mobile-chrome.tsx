@@ -81,13 +81,13 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
     <div className="lg:hidden">
       {/* ── Top fixed marketplace bar ─────────────────────────── */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-12 items-center gap-2 px-3">
+        <div className="flex h-14 items-center gap-3 px-4">
           <Command className="size-5 shrink-0 text-primary" />
-          <span className="text-sm font-semibold tracking-tight">
+          <span className="text-base font-semibold tracking-tight">
             SBBT Staff
           </span>
         </div>
-        <div className="flex items-center gap-1 overflow-x-auto px-2 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex items-center gap-2 overflow-x-auto px-4 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {marketplaceTabs.map((tab) => {
             const active = marketplaceFilter === tab.key;
             return (
@@ -95,9 +95,9 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
                 key={tab.key}
                 type="button"
                 onClick={() => handleTab(tab.key)}
-                className={`flex h-9 min-w-max shrink-0 items-center rounded-full px-4 text-sm font-medium transition-colors ${
+                className={`flex h-10 min-w-max shrink-0 items-center rounded-full px-5 text-sm font-medium transition-colors ${
                   active
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                 }`}
                 aria-pressed={active}
@@ -111,7 +111,7 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
 
       {/* ── Bottom fixed navigation ───────────────────────────── */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 safe-area-inset-bottom"
         aria-label="Staff modules"
       >
         <div className="grid grid-cols-7">
@@ -122,12 +122,12 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
               <Link
                 key={item.title}
                 href={item.href}
-                className="flex min-h-14 flex-col items-center justify-center gap-1 text-muted-foreground transition-colors active:bg-muted/50"
+                className="flex min-h-14 flex-col items-center justify-center gap-1.5 text-muted-foreground transition-colors active:bg-muted/50"
                 aria-current={active ? "page" : undefined}
               >
                 <Icon className={`size-5 ${active ? "text-primary" : ""}`} />
                 <span
-                  className={`text-[10px] font-medium ${
+                  className={`text-[11px] font-medium ${
                     active ? "text-primary" : ""
                   }`}
                 >
@@ -142,16 +142,16 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
             <SheetTrigger asChild>
               <button
                 type="button"
-                className="flex min-h-14 flex-col items-center justify-center gap-1 text-muted-foreground transition-colors active:bg-muted/50"
+                className="flex min-h-14 flex-col items-center justify-center gap-1.5 text-muted-foreground transition-colors active:bg-muted/50"
                 aria-label="More options"
               >
                 {moreItem ? (
                   <MoreHorizontal className="size-5" />
                 ) : null}
-                <span className="text-[10px] font-medium">More</span>
+                <span className="text-[11px] font-medium">More</span>
               </button>
             </SheetTrigger>
-            <SheetContent side="bottom" className="rounded-t-2xl pb-8">
+            <SheetContent side="bottom" className="rounded-t-2xl pb-10 safe-area-inset-bottom">
               <SheetHeader className="text-left">
                 <SheetTitle className="text-base">More</SheetTitle>
                 <SheetDescription className="text-left">
@@ -159,8 +159,8 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
                 </SheetDescription>
               </SheetHeader>
 
-              <div className="mb-4 flex items-center gap-3 rounded-xl border bg-muted/30 p-3">
-                <Avatar className="size-9">
+              <div className="mb-5 flex items-center gap-3 rounded-xl border bg-muted/30 p-4">
+                <Avatar className="size-10">
                   <AvatarFallback>{fallback}</AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col">
@@ -171,14 +171,14 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-3">
                 {extraMenuItems.map((item) => {
                   const Icon = item.icon;
                   return (
                     <SheetClose asChild key={item.title}>
                       <Link
                         href={item.href}
-                        className="flex flex-col items-center gap-2 rounded-xl border bg-card p-3 text-center text-xs font-medium text-foreground transition-colors active:bg-muted/50"
+                        className="flex flex-col items-center gap-2 rounded-xl border bg-card p-4 text-center text-xs font-medium text-foreground transition-colors active:bg-muted/50"
                       >
                         <Icon className="size-5 text-primary" />
                         {item.title}
@@ -188,7 +188,7 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
                 })}
               </div>
 
-              <Separator className="my-4" />
+              <Separator className="my-5" />
 
               <Button
                 type="button"
