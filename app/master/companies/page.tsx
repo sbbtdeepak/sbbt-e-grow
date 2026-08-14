@@ -4,7 +4,7 @@ import { ChevronRight, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { getCompanies } from "@/app/(master)/companies/actions";
+import { getCompanies } from "@/app/master/companies/actions";
 
 export const dynamic = "force-dynamic";
 

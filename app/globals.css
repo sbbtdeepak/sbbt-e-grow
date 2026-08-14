@@ -56,6 +56,8 @@
   --animate-fade-in: fade-in 150ms ease-out;
   --animate-slide-up: slide-up 200ms ease-out;
   --animate-scale-in: scale-in 150ms ease-out;
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
 }
 
 :root {
@@ -91,6 +93,8 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --brand: oklch(0.56 0.18 265);
+  --brand-foreground: oklch(0.985 0 0);
 }
 
 .dark {
@@ -125,6 +129,8 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --brand: oklch(0.65 0.18 265);
+  --brand-foreground: oklch(0.985 0 0);
 }
 
 @layer base {
@@ -157,6 +163,13 @@
   }
   .animate-scale-in {
     animation: var(--animate-scale-in);
+  }
+  .bg-grid {
+    background-image: radial-gradient(circle, oklch(0 0 0 / 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .bg-gradient-brand-subtle {
+    background: radial-gradient(circle at top center, oklch(0.56 0.18 265 / 0.08), transparent 60%);
   }
 }
 

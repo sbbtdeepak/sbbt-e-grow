@@ -24,16 +24,19 @@ async function MasterRouter() {
   await requireRole("master_admin");
 
   return (
-    <nav className="space-y-4">
-      <Link href="/companies" className="group block p-4 border rounded hover:bg-primary/10 transition-colors">
+    <div className="flex flex-col gap-4">
+      <Link href="/master/companies" className="group block p-4 border rounded hover:bg-primary/10 transition-colors">
         Companies
       </Link>
-      <Link href="/plans" className="group block p-4 border rounded hover:bg-primary/10 transition-colors">
+      <Link href="/master/plans" className="group block p-4 border rounded hover:bg-primary/10 transition-colors">
         Plans
+      </Link>
+      <Link href="/master/products" className="group block p-4 border rounded hover:bg-primary/10 transition-colors">
+        Products
       </Link>
       <Link href="/master/settings" className="group block p-4 border rounded hover:bg-primary/10 transition-colors">
         Settings
       </Link>
-    </nav>
+    </div>
   );
 }

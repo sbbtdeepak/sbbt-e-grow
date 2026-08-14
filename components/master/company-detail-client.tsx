@@ -18,7 +18,7 @@ import {
   setSubscriptionPeriod,
   cancelSubscription,
   reactivateSubscription,
-} from "@/app/(master)/companies/actions";
+} from "@/app/master/companies/actions";
 import type { Plan } from "@/lib/saas/entitlements";
 import type { Database } from "@/types/database";
 

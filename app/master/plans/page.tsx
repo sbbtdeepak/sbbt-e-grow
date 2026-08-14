@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
-import { getPlans } from "@/app/(master)/companies/actions";
+import { getPlans } from "@/app/master/companies/actions";
 
 export const dynamic = "force-dynamic";
 

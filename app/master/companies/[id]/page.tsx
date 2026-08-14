@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { CompanyDetailClient } from "@/components/master/company-detail-client";
-import { getCompanyDetail, getPlans } from "@/app/(master)/companies/actions";
+import { getCompanyDetail, getPlans } from "@/app/master/companies/actions";
 
 export const dynamic = "force-dynamic";
 

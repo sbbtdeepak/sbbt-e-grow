@@ -69,7 +69,6 @@ export async function createExpectedPayment(
 
   const amountExpected = items?.reduce((sum, i) => sum + (i.total_sale || 0), 0) || 0;
   const amountReceived = parsed.data.amountReceived || 0;
-  const pending = Math.max(0, amountExpected - amountReceived);
 
   let status: "expected" | "partial" | "received" | "pending" | "cancelled" = "expected";
   if (amountReceived <= 0) status = "expected";
@@ -81,7 +80,6 @@ export async function createExpectedPayment(
     order_id: order.id,
     amount_expected: amountExpected,
     amount_received: amountReceived,
-    pending,
     status,
     payment_method: parsed.data.paymentMethod,
     payment_reference: parsed.data.paymentReference,
@@ -96,7 +94,7 @@ export async function createExpectedPayment(
 
 /**
  * Receive payment for an existing expected payment.
- * Updates amount_received, pending, and status.
+ * Updates amount_received and status. (pending is auto-computed.)
  */
 export async function receivePayment(
   input: PaymentConfirmInput,
@@ -136,7 +134,6 @@ export async function receivePayment(
 
   const amountExpected = existing.amount_expected;
   const amountReceived = parsed.data.amountReceived || 0;
-  const pending = Math.max(0, amountExpected - amountReceived);
 
   let status: "expected" | "partial" | "received" | "pending" | "cancelled" = "expected";
   if (amountReceived <= 0) status = "expected";
@@ -147,7 +144,6 @@ export async function receivePayment(
     .from("payments")
     .update({
       amount_received: amountReceived,
-      pending,
       status,
       payment_method: parsed.data.paymentMethod,
       payment_reference: parsed.data.paymentReference,

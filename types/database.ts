@@ -851,6 +851,167 @@ export type Database = {
           },
         ];
       };
+
+      saas_products: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          tagline: string;
+          description: string;
+          short_description: string;
+          features: Json;
+          target_audience: string | null;
+          hero_image_url: string | null;
+          is_active: boolean;
+          is_featured: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          slug: string;
+          tagline: string;
+          description: string;
+          short_description: string;
+          features?: Json;
+          target_audience?: string | null;
+          hero_image_url?: string | null;
+          is_active?: boolean;
+          is_featured?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          slug?: string;
+          tagline?: string;
+          description?: string;
+          short_description?: string;
+          features?: Json;
+          target_audience?: string | null;
+          hero_image_url?: string | null;
+          is_active?: boolean;
+          is_featured?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      product_features: {
+        Row: {
+          id: string;
+          saas_product_id: string;
+          feature_key: string;
+          feature_name: string;
+          feature_description: string;
+          feature_type: "capability" | "integration" | "support" | "limit";
+          is_highlighted: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          saas_product_id: string;
+          feature_key: string;
+          feature_name: string;
+          feature_description: string;
+          feature_type: "capability" | "integration" | "support" | "limit";
+          is_highlighted?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          saas_product_id?: string;
+          feature_key?: string;
+          feature_name?: string;
+          feature_description?: string;
+          feature_type?: "capability" | "integration" | "support" | "limit";
+          is_highlighted?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "product_features_saas_product_id_fkey";
+            columns: ["saas_product_id"];
+            isOneToOne: false;
+            referencedRelation: "saas_products";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      product_pricing: {
+        Row: {
+          id: string;
+          saas_product_id: string;
+          plan_id: string | null;
+          tier_name: string;
+          price_monthly: number;
+          price_yearly: number;
+          is_popular: boolean;
+          features: Json;
+          limits: Json;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          saas_product_id: string;
+          plan_id?: string | null;
+          tier_name: string;
+          price_monthly: number;
+          price_yearly: number;
+          is_popular?: boolean;
+          features?: Json;
+          limits?: Json;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          saas_product_id?: string;
+          plan_id?: string | null;
+          tier_name?: string;
+          price_monthly?: number;
+          price_yearly?: number;
+          is_popular?: boolean;
+          features?: Json;
+          limits?: Json;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "product_pricing_saas_product_id_fkey";
+            columns: ["saas_product_id"];
+            isOneToOne: false;
+            referencedRelation: "saas_products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "product_pricing_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
 
     Views: {
