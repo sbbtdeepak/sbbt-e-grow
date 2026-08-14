@@ -1,9 +1,11 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/permissions.server";
 import { MarketplacesClient } from "@/components/marketplaces/marketplaces-client";
 
 export default async function MarketplacesPage() {
   const ctx = await requireCompanyUser();
+  await requirePermission("marketplaces");
   const supabase = await createSupabaseServerClient();
 
   const { data: marketplaces, error } = await supabase

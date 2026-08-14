@@ -1,9 +1,11 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/permissions.server";
 import { OrderEntryClient } from "@/components/orders/order-entry";
 
 export default async function OrdersPage() {
   const ctx = await requireCompanyUser();
+  await requirePermission("orders");
   const supabase = await createSupabaseServerClient();
 
   const [marketplacesRes, sellersRes, productsRes] = await Promise.all([

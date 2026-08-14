@@ -5,9 +5,14 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser, canMutateMasterData } from "@/lib/auth/session";
 import { productSchema, type ActionResult, type ProductInput } from "@/lib/validations/catalog";
+import {
+  assertWithinLimit,
+  EntitlementError,
+} from "@/lib/saas/entitlements";
 
 /**
  * Create a new product.
+ * Enforces subscription products_limit before insert.
  */
 export async function createProduct(
   input: ProductInput,
@@ -24,6 +29,15 @@ export async function createProduct(
       error: "Validation failed.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
+  }
+
+  try {
+    await assertWithinLimit("products_limit", 1);
+  } catch (err) {
+    if (err instanceof EntitlementError) {
+      return { ok: false, error: err.message };
+    }
+    return { ok: false, error: "Unable to verify plan limits." };
   }
 
   const supabase = await createSupabaseServerClient();

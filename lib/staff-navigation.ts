@@ -33,23 +33,26 @@ export const marketplaceTabs: MarketplaceTab[] = [
 ];
 
 export type StaffNavItem = {
-title: string;
-href: string;
-icon: LucideIcon;
+  title: string;
+  href: string;
+  icon: LucideIcon;
+  permission: string | null;
 };
 
 /**
  * Bottom fixed navigation for the mobile Staff UI.
  * Single source of truth — same items rendered as icons in bottom bar.
+ * Items with a `permission` are filtered on the client based on the
+ * staff member's permission set. `permission: null` means always visible.
  */
 export const staffNavItems: StaffNavItem[] = [
-{ title: "Order", href: "/orders", icon: ShoppingCart },
-{ title: "Purchase", href: "/purchase", icon: Truck },
-{ title: "Packing", href: "/packing", icon: PackageCheck },
-{ title: "Dispatch", href: "/dispatch", icon: Send },
-{ title: "Delivery", href: "/delivery", icon: Home },
-{ title: "Payment", href: "/payments", icon: CreditCard },
-{ title: "More", href: "#more", icon: MoreHorizontal },
+  { title: "Order", href: "/orders", icon: ShoppingCart, permission: "orders" },
+  { title: "Purchase", href: "/purchase", icon: Truck, permission: "purchase" },
+  { title: "Packing", href: "/packing", icon: PackageCheck, permission: "packing" },
+  { title: "Dispatch", href: "/dispatch", icon: Send, permission: "dispatch" },
+  { title: "Delivery", href: "/delivery", icon: Home, permission: "delivery" },
+  { title: "Payment", href: "/payments", icon: CreditCard, permission: "payments" },
+  { title: "More", href: "#more", icon: MoreHorizontal, permission: null },
 ];
 
 export type NormalizedMarketplaceKey =

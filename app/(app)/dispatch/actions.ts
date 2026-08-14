@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser } from "@/lib/auth/session";
+import { assertPermission, PermissionError } from "@/lib/auth/permissions.server";
 import {
   dispatchConfirmSchema,
   type DispatchConfirmInput,
@@ -20,6 +21,15 @@ export async function confirmDispatch(
   input: DispatchConfirmInput,
 ): Promise<ActionResult> {
   const ctx = await requireCompanyUser();
+
+  try {
+    await assertPermission("dispatch");
+  } catch (err) {
+    if (err instanceof PermissionError) {
+      return { ok: false, error: "You do not have permission to access dispatch." };
+    }
+    return { ok: false, error: "Unable to verify permissions." };
+  }
 
   const parsed = dispatchConfirmSchema.safeParse(input);
   if (!parsed.success) {

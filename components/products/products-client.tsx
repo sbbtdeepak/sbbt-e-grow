@@ -27,6 +27,7 @@ import {
 import { EntityDialog } from "@/components/crud/entity-dialog";
 import { ConfirmDelete } from "@/components/crud/confirm-delete";
 import { PageHeader } from "@/components/layout/page-header";
+import { UsageMeter } from "@/components/saas/usage-meter";
 import {
   createProduct,
   updateProduct,
@@ -34,6 +35,7 @@ import {
 } from "@/app/(app)/products/actions";
 import type { Tables } from "@/types/database";
 import type { ProductInput } from "@/lib/validations/catalog";
+import type { UsageStat } from "@/lib/saas/usage";
 
 type ProductRow = Tables<"products">;
 
@@ -156,7 +158,13 @@ function ProductDialog({
   );
 }
 
-export function ProductsClient({ products }: { products: ProductRow[] }) {
+export function ProductsClient({
+  products,
+  usage,
+}: {
+  products: ProductRow[];
+  usage: UsageStat;
+}) {
   const router = useRouter();
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all");
 
@@ -164,13 +172,26 @@ export function ProductsClient({ products }: { products: ProductRow[] }) {
     if (filter === "all") return true;
     return p.status === filter;
   });
+  const atLimit =
+    usage.limit !== null &&
+    usage.limit !== Infinity &&
+    usage.usage >= usage.limit;
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <PageHeader
         title="Products"
         description="Product master with SKU, buying price, category and status."
-        actions={<ProductDialog router={router} />}
+        actions={
+          <>
+            <UsageMeter stat={usage} />
+            {!atLimit ? (
+              <ProductDialog router={router} />
+            ) : (
+              <Badge variant="destructive">Product limit reached</Badge>
+            )}
+          </>
+        }
       />
 
       <div className="flex items-center justify-between">

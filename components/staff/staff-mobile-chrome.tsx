@@ -33,16 +33,17 @@ import { signOutAction } from "@/app/(auth)/actions";
 import type { StaffNavItem } from "@/lib/staff-navigation";
 
 const extraMenuItems: StaffNavItem[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Products", href: "/products", icon: Package },
-  { title: "Marketplaces", href: "/marketplaces", icon: Store },
-  { title: "Reports", href: "/reports", icon: BarChart3 },
-  { title: "Settings", href: "/settings", icon: Settings },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: null },
+  { title: "Products", href: "/products", icon: Package, permission: "products" },
+  { title: "Marketplaces", href: "/marketplaces", icon: Store, permission: "marketplaces" },
+  { title: "Reports", href: "/reports", icon: BarChart3, permission: "reports" },
+  { title: "Settings", href: "/settings", icon: Settings, permission: null },
 ];
 
 type StaffMobileChromeProps = {
   email: string;
   fullName?: string | null;
+  permissions?: Record<string, boolean>;
 };
 
 function initialsFrom(value: string): string {
@@ -54,7 +55,7 @@ function initialsFrom(value: string): string {
     .join("");
 }
 
-export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
+export function StaffMobileChrome({ email, fullName, permissions = {} }: StaffMobileChromeProps) {
   const pathname = usePathname();
   const marketplaceFilter = useStaffStore((s) => s.marketplaceFilter);
   const setMarketplaceFilter = useStaffStore((s) => s.setMarketplaceFilter);
@@ -73,8 +74,12 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
     return pathname.startsWith(href);
   };
 
-  // First six bottom items are fixed modules; "More" opens sheet.
+  // Filter bottom items by permission (More item always visible).
   const bottomItems = staffNavItems.slice(0, 6);
+  const visibleBottom = bottomItems.filter((item) => {
+    if (!item.permission) return true;
+    return permissions[item.permission] === true;
+  });
   const moreItem = staffNavItems[6];
 
   return (
@@ -115,7 +120,7 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
         aria-label="Staff modules"
       >
         <div className="grid grid-cols-7">
-          {bottomItems.map((item) => {
+          {visibleBottom.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
             return (
@@ -172,7 +177,9 @@ export function StaffMobileChrome({ email, fullName }: StaffMobileChromeProps) {
               </div>
 
               <div className="grid grid-cols-3 gap-3">
-                {extraMenuItems.map((item) => {
+                {extraMenuItems
+                  .filter((item) => !item.permission || permissions[item.permission] === true)
+                  .map((item) => {
                   const Icon = item.icon;
                   return (
                     <SheetClose asChild key={item.title}>

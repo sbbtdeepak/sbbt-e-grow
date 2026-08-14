@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type PageHeaderProps = {
@@ -5,6 +6,8 @@ type PageHeaderProps = {
   description?: string;
   actions?: React.ReactNode;
   className?: string;
+  backHref?: string;
+  backLabel?: string;
 };
 
 /**
@@ -16,6 +19,8 @@ export function PageHeader({
   description,
   actions,
   className,
+  backHref,
+  backLabel,
 }: PageHeaderProps) {
   return (
     <div
@@ -25,6 +30,14 @@ export function PageHeader({
       )}
     >
       <div className="flex flex-col gap-1">
+        {backHref ? (
+          <Link
+            href={backHref}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            ← {backLabel ?? "Back"}
+          </Link>
+        ) : null}
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {description ? (
           <p className="text-sm text-muted-foreground">{description}</p>

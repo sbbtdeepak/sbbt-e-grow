@@ -1,7 +1,9 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth/session";
 import { getMasterDashboard, getCompanyDashboard, getStaffDashboard } from "@/app/(app)/dashboard/actions";
+import { getOnboardingState } from "@/app/(app)/onboarding/actions";
 import { PageHeader } from "@/components/layout/page-header";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { MasterDashboardClient } from "@/components/dashboard/master-dashboard-client";
@@ -26,6 +28,14 @@ export default async function DashboardPage() {
 
 async function DashboardRouter() {
   const ctx = await requireUser();
+
+  // Company admins who have not completed onboarding go to the onboarding wizard.
+  if (ctx.role === "company_admin") {
+    const onboardingState = await getOnboardingState();
+    if (onboardingState.ok && onboardingState.data && !onboardingState.data.completed) {
+      redirect("/onboarding");
+    }
+  }
 
   if (ctx.role === "master_admin") {
     const result = await getMasterDashboard();

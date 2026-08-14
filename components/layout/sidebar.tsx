@@ -21,7 +21,11 @@ import { SidebarBrand } from "@/components/layout/sidebar-brand";
  * Renders a fixed desktop sidebar (lg+) and a slide-over sheet for
  * mobile. Navigation content is shared via `<NavLinks />`.
  */
-export function Sidebar() {
+export function Sidebar({
+  permissions = {},
+}: {
+  permissions?: Record<string, boolean>;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -30,9 +34,9 @@ export function Sidebar() {
       <aside className="hidden w-72 shrink-0 border-r border-sidebar-border/70 bg-sidebar/95 lg:flex lg:flex-col shadow-sm">
         <SidebarBrand />
         <div className="flex-1 overflow-y-auto px-3 py-3">
-          <NavLinks />
-        </div>
-      </aside>
+         <NavLinks permissions={permissions} />
+         </div>
+       </aside>
 
       {/* Mobile sidebar (sheet) */}
       <Sheet open={open} onOpenChange={setOpen}>
@@ -56,7 +60,7 @@ export function Sidebar() {
             </SheetDescription>
           </SheetHeader>
           <div className="overflow-y-auto px-3 py-3">
-            <NavLinks onNavigate={() => setOpen(false)} />
+            <NavLinks permissions={permissions} onNavigate={() => setOpen(false)} />
           </div>
         </SheetContent>
       </Sheet>

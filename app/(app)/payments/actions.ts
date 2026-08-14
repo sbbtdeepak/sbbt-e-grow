@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser } from "@/lib/auth/session";
+import { assertPermission, PermissionError } from "@/lib/auth/permissions.server";
 import {
   paymentConfirmSchema,
   type PaymentConfirmInput,
@@ -19,6 +20,15 @@ export async function createExpectedPayment(
   input: PaymentConfirmInput,
 ): Promise<ActionResult> {
   const ctx = await requireCompanyUser();
+
+  try {
+    await assertPermission("payments");
+  } catch (err) {
+    if (err instanceof PermissionError) {
+      return { ok: false, error: "You do not have permission to access payments." };
+    }
+    return { ok: false, error: "Unable to verify permissions." };
+  }
 
   const parsed = paymentConfirmSchema.safeParse(input);
   if (!parsed.success) {
@@ -92,6 +102,15 @@ export async function receivePayment(
   input: PaymentConfirmInput,
 ): Promise<ActionResult> {
   const ctx = await requireCompanyUser();
+
+  try {
+    await assertPermission("payments");
+  } catch (err) {
+    if (err instanceof PermissionError) {
+      return { ok: false, error: "You do not have permission to access payments." };
+    }
+    return { ok: false, error: "Unable to verify permissions." };
+  }
 
   const parsed = paymentConfirmSchema.safeParse(input);
   if (!parsed.success) {

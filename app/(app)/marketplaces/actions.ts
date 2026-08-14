@@ -10,6 +10,10 @@ import {
   type ActionResult,
   type MarketplaceInput,
 } from "@/lib/validations/catalog";
+import {
+  assertWithinLimit,
+  EntitlementError,
+} from "@/lib/saas/entitlements";
 
 // ============================================================
 // MARKETPLACE ACTIONS
@@ -30,6 +34,15 @@ export async function createMarketplace(
       error: "Validation failed.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
+  }
+
+  try {
+    await assertWithinLimit("marketplaces_limit", 1);
+  } catch (err) {
+    if (err instanceof EntitlementError) {
+      return { ok: false, error: err.message };
+    }
+    return { ok: false, error: "Unable to verify plan limits." };
   }
 
   const supabase = await createSupabaseServerClient();
@@ -156,6 +169,15 @@ export async function createSellerAccount(
       error: "Validation failed.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
+  }
+
+  try {
+    await assertWithinLimit("seller_accounts_limit", 1);
+  } catch (err) {
+    if (err instanceof EntitlementError) {
+      return { ok: false, error: err.message };
+    }
+    return { ok: false, error: "Unable to verify plan limits." };
   }
 
   const supabase = await createSupabaseServerClient();

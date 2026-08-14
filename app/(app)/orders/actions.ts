@@ -6,6 +6,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser } from "@/lib/auth/session";
 import { orderEntrySchema, type OrderEntryInput } from "@/lib/validations/order";
 import type { ActionResult } from "@/lib/validations/catalog";
+import { assertPermission, PermissionError } from "@/lib/auth/permissions.server";
+import {
+  assertWithinLimit,
+  EntitlementError,
+} from "@/lib/saas/entitlements";
 
 /**
  * Shared validation + authorization for order entry.
@@ -78,6 +83,15 @@ export async function saveOrderDraft(
   const validated = await validateOrderEntry(input);
   if (!validated.ok) return validated;
 
+  try {
+    await assertPermission("orders");
+  } catch (err) {
+    if (err instanceof PermissionError) {
+      return { ok: false, error: "You do not have permission to access orders." };
+    }
+    return { ok: false, error: "Unable to verify permissions." };
+  }
+
   const supabase = await createSupabaseServerClient();
 
   const verifyError = await verifyMarketplaceSeller(
@@ -142,6 +156,19 @@ export async function confirmOrderEntry(
 ): Promise<ActionResult<{ orderId: string }>> {
   const validated = await validateOrderEntry(input);
   if (!validated.ok) return validated;
+
+  try {
+    await assertPermission("orders");
+    await assertWithinLimit("monthly_orders_limit", 1);
+  } catch (err) {
+    if (err instanceof PermissionError) {
+      return { ok: false, error: "You do not have permission to access orders." };
+    }
+    if (err instanceof EntitlementError) {
+      return { ok: false, error: err.message };
+    }
+   return { ok: false, error: "Unable to verify plan limits." };
+  }
 
   const supabase = await createSupabaseServerClient();
 

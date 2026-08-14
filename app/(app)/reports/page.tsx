@@ -1,4 +1,5 @@
 import { requireCompanyUser } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/permissions.server";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReportClient } from "@/components/reports/report-client";
 
@@ -6,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
   await requireCompanyUser();
+  await requirePermission("reports");
 
   const initial = {
     reportType: "daily_sales",

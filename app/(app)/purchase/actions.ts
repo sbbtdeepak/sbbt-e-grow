@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser } from "@/lib/auth/session";
+import { assertPermission, PermissionError } from "@/lib/auth/permissions.server";
 import {
   purchaseConfirmSchema,
   type PurchaseConfirmInput,
@@ -20,6 +21,15 @@ export async function updatePurchaseLine(
   vendorNotes: string | null,
 ): Promise<ActionResult> {
   const ctx = await requireCompanyUser();
+
+  try {
+    await assertPermission("purchase");
+  } catch (err) {
+    if (err instanceof PermissionError) {
+      return { ok: false, error: "You do not have permission to access purchase." };
+    }
+    return { ok: false, error: "Unable to verify permissions." };
+  }
 
   if (!Number.isFinite(buyQty) || buyQty < 0) {
     return { ok: false, error: "Buy qty must be a non-negative number." };
@@ -72,6 +82,15 @@ export async function confirmPurchase(
   input: PurchaseConfirmInput,
 ): Promise<ActionResult> {
   const ctx = await requireCompanyUser();
+
+  try {
+    await assertPermission("purchase");
+  } catch (err) {
+    if (err instanceof PermissionError) {
+      return { ok: false, error: "You do not have permission to access purchase." };
+    }
+    return { ok: false, error: "Unable to verify permissions." };
+  }
 
   const parsed = purchaseConfirmSchema.safeParse(input);
   if (!parsed.success) {

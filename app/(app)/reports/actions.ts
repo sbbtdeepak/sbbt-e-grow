@@ -2,6 +2,7 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser } from "@/lib/auth/session";
+import { assertPermission, PermissionError } from "@/lib/auth/permissions.server";
 import { reportFilterSchema, type ReportFilterInput } from "@/lib/validations/reports";
 import type { ActionResult } from "@/lib/validations/catalog";
 
@@ -22,6 +23,15 @@ const VIEW_MAP: Record<ReportFilterInput["reportType"], string> = {
 
 export async function getReportData(input: ReportFilterInput): Promise<ActionResult> {
   const ctx = await requireCompanyUser();
+
+  try {
+    await assertPermission("reports");
+  } catch (err) {
+    if (err instanceof PermissionError) {
+      return { ok: false, error: "You do not have permission to access reports." };
+    }
+    return { ok: false, error: "Unable to verify permissions." };
+  }
 
   const parsed = reportFilterSchema.safeParse(input);
   if (!parsed.success) {
@@ -86,6 +96,15 @@ export async function getReportData(input: ReportFilterInput): Promise<ActionRes
 
 export async function exportReportCsv(input: ReportFilterInput): Promise<ActionResult<string>> {
   const ctx = await requireCompanyUser();
+
+  try {
+    await assertPermission("reports");
+  } catch (err) {
+    if (err instanceof PermissionError) {
+      return { ok: false, error: "You do not have permission to access reports." };
+    }
+    return { ok: false, error: "Unable to verify permissions." };
+  }
 
   const parsed = reportFilterSchema.safeParse(input);
   if (!parsed.success) {

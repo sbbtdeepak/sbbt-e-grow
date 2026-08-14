@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth/session";
+import { getUserPermissions } from "@/lib/auth/permissions.server";
 import { TopNavbar } from "@/components/layout/top-navbar";
 import { StaffMobileChrome } from "@/components/staff/staff-mobile-chrome";
 
@@ -17,14 +18,19 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const ctx = await requireUser();
   const isStaff = ctx.role === "staff";
 
+  let perms: Record<string, boolean> = {};
+  if (isStaff) {
+    perms = await getUserPermissions();
+  }
+
   return (
     <div className="flex min-h-svh flex-col">
       {isStaff ? (
         <>
           <div className="hidden lg:block">
-            <TopNavbar />
+            <TopNavbar permissions={perms} />
           </div>
-          <StaffMobileChrome email={ctx.email} fullName={null} />
+          <StaffMobileChrome email={ctx.email} fullName={null} permissions={perms} />
         </>
       ) : (
         <TopNavbar />

@@ -1,10 +1,12 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/permissions.server";
 import { PackingClient } from "@/components/packing/packing-client";
 import { PackingMobile } from "@/components/staff/staff-mobile-wrappers";
 
 export default async function PackingPage() {
   const ctx = await requireCompanyUser();
+  await requirePermission("packing");
   const supabase = await createSupabaseServerClient();
   const { data: orders, error } = await supabase.from("orders").select("*, marketplace:marketplaces(*), seller_account:seller_accounts(*), order_items(*, product:products(*))").eq("company_id", ctx.companyId).eq("stage", "packing").order("order_date", { ascending: false });
   if (error) throw new Error(error.message);

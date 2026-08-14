@@ -11,12 +11,23 @@ import { navItems } from "@/lib/navigation";
  * mobile sheet. Highlights the active route based on the current
  * pathname.
  */
-export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+export function NavLinks({
+  onNavigate,
+  permissions = {},
+}: {
+  onNavigate?: () => void;
+  permissions?: Record<string, boolean>;
+}) {
   const pathname = usePathname();
+
+  const visibleItems = navItems.filter((item) => {
+    if (!item.permission) return true;
+    return permissions[item.permission] === true;
+  });
 
   return (
     <nav className="flex flex-col gap-1">
-      {navItems.map((item) => {
+      {visibleItems.map((item) => {
         const isActive =
           pathname === item.href || pathname.startsWith(`${item.href}/`);
         const Icon = item.icon;

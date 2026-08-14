@@ -9,6 +9,7 @@ export type SessionContext = {
   email: string;
   role: UserRole;
   companyId: string | null;
+  isActive: boolean;
 };
 
 /**
@@ -28,7 +29,7 @@ export const getSessionContext = cache(
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, company_id, role")
+      .select("id, company_id, role, is_active")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -39,18 +40,23 @@ export const getSessionContext = cache(
       email: user.email ?? "",
       role: profile.role,
       companyId: profile.company_id,
+      isActive: profile.is_active ?? true,
     };
   },
 );
 
 /**
- * Requires authenticated user.
+ * Requires authenticated, active user.
  * Throws redirect to `/login` if no session exists.
+ * Throws redirect to `/suspended` if the account is deactivated.
  */
 export async function requireUser() {
   const ctx = await getSessionContext();
   if (!ctx) {
     redirect("/login");
+  }
+  if (!ctx.isActive) {
+    redirect("/suspended");
   }
   return ctx;
 }

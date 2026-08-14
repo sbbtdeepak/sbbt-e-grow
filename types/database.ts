@@ -42,50 +42,68 @@ export type Database = {
   public: {
     Tables: {
       companies: {
-        Row: {
+         Row: {
           id: string;
           name: string;
+          legal_name: string | null;
           slug: string;
           is_active: boolean;
           logo_url: string | null;
           gst: string | null;
           address: string | null;
+          city: string | null;
+          state: string | null;
+          pincode: string | null;
+          country: string | null;
           timezone: string;
           currency: string;
           financial_year_start: string | null;
           theme: string;
           created_at: string;
           updated_at: string;
+          created_by: string | null;
         };
         Insert: {
           id?: string;
           name: string;
+          legal_name?: string | null;
           slug: string;
           is_active?: boolean;
           logo_url?: string | null;
           gst?: string | null;
           address?: string | null;
+          city?: string | null;
+          state?: string | null;
+          pincode?: string | null;
+          country?: string | null;
           timezone?: string;
           currency?: string;
           financial_year_start?: string | null;
           theme?: string;
           created_at?: string;
           updated_at?: string;
+          created_by?: string | null;
         };
         Update: {
           id?: string;
           name?: string;
+          legal_name?: string | null;
           slug?: string;
           is_active?: boolean;
           logo_url?: string | null;
           gst?: string | null;
           address?: string | null;
+          city?: string | null;
+          state?: string | null;
+          pincode?: string | null;
+          country?: string | null;
           timezone?: string;
           currency?: string;
           financial_year_start?: string | null;
           theme?: string;
           created_at?: string;
           updated_at?: string;
+          created_by?: string | null;
         };
         Relationships: [];
       };
@@ -96,6 +114,7 @@ export type Database = {
           company_id: string | null;
           full_name: string | null;
           role: UserRole;
+          is_active: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -104,6 +123,7 @@ export type Database = {
           company_id?: string | null;
           full_name?: string | null;
           role?: UserRole;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -112,6 +132,7 @@ export type Database = {
           company_id?: string | null;
           full_name?: string | null;
           role?: UserRole;
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -548,6 +569,281 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "company_settings_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      plans: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          description: string | null;
+          price_monthly: number;
+          price_yearly: number;
+          is_active: boolean;
+          sort_order: number;
+          features: Json;
+          limits: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          slug: string;
+          description?: string | null;
+          price_monthly?: number;
+          price_yearly?: number;
+          is_active?: boolean;
+          sort_order?: number;
+          features?: Json;
+          limits?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          slug?: string;
+          description?: string | null;
+          price_monthly?: number;
+          price_yearly?: number;
+          is_active?: boolean;
+          sort_order?: number;
+          features?: Json;
+          limits?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      plan_features: {
+        Row: {
+          id: string;
+          plan_id: string;
+          feature_key: string;
+          feature_name: string;
+          feature_type: "access" | "limit";
+          config: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          plan_id: string;
+          feature_key: string;
+          feature_name: string;
+          feature_type: "access" | "limit";
+          config?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          plan_id?: string;
+          feature_key?: string;
+          feature_name?: string;
+          feature_type?: "access" | "limit";
+          config?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "plan_features_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      subscriptions: {
+        Row: {
+          id: string;
+          company_id: string;
+          plan_id: string;
+          status: "trialing" | "active" | "past_due" | "cancelled" | "expired";
+          trial_start: string | null;
+          trial_end: string | null;
+          current_period_start: string;
+          current_period_end: string;
+          cancelled_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          company_id: string;
+          plan_id: string;
+          status: "trialing" | "active" | "past_due" | "cancelled" | "expired";
+          trial_start?: string | null;
+          trial_end?: string | null;
+          current_period_start: string;
+          current_period_end: string;
+          cancelled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          company_id?: string;
+          plan_id?: string;
+          status?: "trialing" | "active" | "past_due" | "cancelled" | "expired";
+          trial_start?: string | null;
+          trial_end?: string | null;
+          current_period_start?: string;
+          current_period_end?: string;
+          cancelled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      company_usage: {
+        Row: {
+          id: string;
+          company_id: string;
+          period_start: string;
+          period_end: string | null;
+          products_count: number;
+          marketplaces_count: number;
+          seller_accounts_count: number;
+          orders_count: number;
+          ai_usage_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          company_id: string;
+          period_start: string;
+          period_end?: string | null;
+          products_count?: number;
+          marketplaces_count?: number;
+          seller_accounts_count?: number;
+          orders_count?: number;
+          ai_usage_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          company_id?: string;
+          period_start?: string;
+          period_end?: string | null;
+          products_count?: number;
+          marketplaces_count?: number;
+          seller_accounts_count?: number;
+          orders_count?: number;
+          ai_usage_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "company_usage_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      user_company_roles: {
+        Row: {
+          id: string;
+          user_id: string;
+          company_id: string;
+          role: "master_admin" | "company_admin" | "staff";
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          company_id: string;
+          role: "master_admin" | "company_admin" | "staff";
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          company_id?: string;
+          role?: "master_admin" | "company_admin" | "staff";
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "user_company_roles_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      user_permissions: {
+        Row: {
+          id: string;
+          user_id: string;
+          company_id: string;
+          permission: string;
+          is_allowed: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          company_id: string;
+          permission: string;
+          is_allowed?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          company_id?: string;
+          permission?: string;
+          is_allowed?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "user_permissions_company_id_fkey";
             columns: ["company_id"];
             isOneToOne: false;
             referencedRelation: "companies";
