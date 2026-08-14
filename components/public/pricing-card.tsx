@@ -9,12 +9,26 @@ import type { Json } from "@/types/database";
 type PricingTier = {
   id: string;
   tier_name: string;
+  description?: string | null;
   price_monthly: number;
   price_yearly: number;
+  currency?: string;
   is_popular: boolean;
   features: Json;
   limits: Json;
 };
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  INR: "₹",
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+};
+
+function currencySymbol(currency?: string): string {
+  if (currency && CURRENCY_SYMBOLS[currency]) return CURRENCY_SYMBOLS[currency];
+  return "$";
+}
 
 type PublicPricingCardProps = {
   tier: PricingTier;
@@ -22,6 +36,7 @@ type PublicPricingCardProps = {
 };
 
 export function PublicPricingCard({ tier, ctaHref = "/catalogue" }: PublicPricingCardProps) {
+  const symbol = currencySymbol(tier.currency);
   return (
     <Card
       className={cn(
@@ -40,13 +55,20 @@ export function PublicPricingCard({ tier, ctaHref = "/catalogue" }: PublicPricin
       <div className="mb-5">
         <h3 className="font-heading text-xl font-semibold">{tier.tier_name}</h3>
         <div className="mt-3 flex items-baseline gap-1">
-          <span className="font-heading text-4xl font-bold">${tier.price_monthly}</span>
+          <span className="font-heading text-4xl font-bold">
+            {symbol}
+            {tier.price_monthly}
+          </span>
           <span className="text-base text-muted-foreground">/mo</span>
         </div>
         {tier.price_yearly > 0 && (
           <p className="mt-1.5 text-sm text-muted-foreground">
-            ${tier.price_yearly}/year · save ~17%
+            {symbol}
+            {tier.price_yearly}/year · save ~17%
           </p>
+        )}
+        {tier.description && (
+          <p className="mt-2 text-sm text-muted-foreground">{tier.description}</p>
         )}
       </div>
 

@@ -20,8 +20,8 @@ export default async function PricingPage() {
       `
       id, name, slug, tagline,
       product_pricing (
-        id, tier_name, price_monthly, price_yearly,
-        is_popular, features, limits, sort_order
+        id, tier_name, description, price_monthly, price_yearly,
+        currency, is_popular, features, limits, sort_order
       )
     `,
     )

@@ -35,13 +35,14 @@ comment on column public.saas_products.is_featured is 'Whether this product appe
 comment on column public.saas_products.sort_order is 'Display order (lower = higher priority)';
 
 -- Seed default SaaS products (idempotent)
-insert into public.saas_products (id, name, slug, tagline, short_description, features, target_audience, is_active, is_featured, sort_order)
+insert into public.saas_products (id, name, slug, tagline, description, short_description, features, target_audience, is_active, is_featured, sort_order)
 values
   (
     gen_random_uuid(),
     'E-Grow Standard',
     'e-grow-standard',
     'The complete live-commerce operating system for growing brands.',
+    'An end-to-end operating system that unifies multi-channel orders, inventory, payments, and profit reporting for growing live-commerce brands.',
     'Manage multi-channel orders, inventory, and payments from one dashboard.',
     '["Multi-channel Order Management", "Real-time Inventory Tracking", "Automated Payment Reconciliation", "P&L Reports", "5 Team Members", "3 Marketplaces"]'::jsonb,
     'Small to medium brands selling on Amazon, Meesho, and website',
@@ -54,6 +55,7 @@ values
     'E-Grow Enterprise',
     'e-grow-enterprise',
     'Advanced automation, AI insights, and unlimited scale for established businesses.',
+    'Enterprise-grade automation with AI demand forecasting and advanced analytics, built to scale high-volume operations with unlimited marketplaces and dedicated support.',
     'Unlock AI-powered forecasting, advanced analytics, and dedicated support.',
     '["AI Demand Forecasting", "Advanced Analytics & Dashboards", "Unlimited Team Members", "Unlimited Marketplaces", "Custom Integrations", "Dedicated Account Manager"]'::jsonb,
     'Established businesses with high order volumes and complex operations',
@@ -66,6 +68,7 @@ values
     'E-Grow Startup',
     'e-grow-startup',
     'Get started free. Perfect for new brands exploring live-commerce.',
+    'A free starter suite with core order and inventory management to help new brands validate their first live-commerce sales channels.',
     'Core order and inventory management to validate your first sales channels.',
     '["Basic Order Management", "Inventory Tracking", "1 Marketplace", "2 Team Members", "Email Support"]'::jsonb,
     'New brands and startups testing live-commerce channels',
@@ -76,6 +79,7 @@ values
 on conflict (slug) do update
 set name = excluded.name,
     tagline = excluded.tagline,
+    description = excluded.description,
     short_description = excluded.short_description,
     features = excluded.features,
     target_audience = excluded.target_audience,
@@ -205,15 +209,7 @@ cross join lateral (values
    '{"products_limit": 5, "marketplaces_limit": 1, "seller_accounts_limit": 3, "staff_users_limit": 2, "monthly_orders_limit": 100}'::jsonb,
    1)
 ) as pp(slug, tier_name, price_monthly, price_yearly, is_popular, features, limits, sort_order)
-where p.slug = pp.slug
-on conflict (saas_product_id, tier_name) do update
-set price_monthly = excluded.price_monthly,
-    price_yearly = excluded.price_yearly,
-    is_popular = excluded.is_popular,
-    features = excluded.features,
-    limits = excluded.limits,
-    sort_order = excluded.sort_order,
-    updated_at = now();
+where p.slug = pp.slug;
 
 -- ============================================================
 -- 4. RLS Policies

@@ -16,7 +16,9 @@ export default async function CataloguePage() {
 
   const { data: products } = await supabase
     .from("saas_products")
-    .select("id, name, slug, tagline, short_description, features, target_audience, is_featured, is_active, sort_order")
+    .select(
+      "id, name, slug, tagline, short_description, features, target_audience, is_featured, is_active, sort_order, image_url, accent_color, external_app_url, cta_label, cta_type",
+    )
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
 

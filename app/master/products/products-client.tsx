@@ -23,12 +23,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
 import {
   getSaaSProducts,
   createSaaSProduct,
   updateSaaSProduct,
   deleteSaaSProduct,
+  setProductActive,
   createProductFeature,
   updateProductFeature,
   deleteProductFeature,
@@ -47,6 +48,11 @@ type SaasProduct = {
   features: string[];
   target_audience: string | null;
   hero_image_url: string | null;
+  image_url: string | null;
+  accent_color: string | null;
+  external_app_url: string | null;
+  cta_label: string | null;
+  cta_type: string | null;
   is_active: boolean;
   is_featured: boolean;
   sort_order: number;
@@ -57,14 +63,18 @@ type SaasProduct = {
     feature_description: string;
     feature_type: string;
     is_highlighted: boolean;
+    is_active: boolean;
     sort_order: number;
   }[];
   product_pricing: {
     id: string;
     tier_name: string;
+    description: string | null;
     price_monthly: number;
     price_yearly: number;
+    currency: string;
     is_popular: boolean;
+    is_active: boolean;
     features: Record<string, unknown>;
     limits: Record<string, unknown>;
     sort_order: number;
@@ -89,6 +99,7 @@ export function MasterProductsClient() {
     feature_description: string;
     feature_type: string;
     is_highlighted: boolean;
+    is_active: boolean;
     sort_order: number;
   } | null>(null);
   const [editingPricing, setEditingPricing] = useState<{
@@ -96,9 +107,12 @@ export function MasterProductsClient() {
     saas_product_id: string;
     plan_id?: string | null;
     tier_name: string;
+    description: string | null;
     price_monthly: number;
     price_yearly: number;
+    currency: string;
     is_popular: boolean;
+    is_active: boolean;
     features: Record<string, unknown>;
     limits: Record<string, unknown>;
     sort_order: number;
@@ -140,6 +154,11 @@ export function MasterProductsClient() {
         features: [],
         target_audience: null,
         hero_image_url: null,
+        image_url: null,
+        accent_color: null,
+        external_app_url: null,
+        cta_label: null,
+        cta_type: null,
         is_active: true,
         is_featured: false,
         sort_order: 0,
@@ -165,6 +184,7 @@ export function MasterProductsClient() {
         feature_description: "",
         feature_type: "capability",
         is_highlighted: false,
+        is_active: true,
         sort_order: 0,
       });
     }
@@ -188,9 +208,12 @@ export function MasterProductsClient() {
         saas_product_id: product.id,
         plan_id: null,
         tier_name: "",
+        description: null,
         price_monthly: 0,
         price_yearly: 0,
+        currency: "INR",
         is_popular: false,
+        is_active: true,
         features: {},
         limits: {},
         sort_order: 0,
@@ -222,6 +245,13 @@ export function MasterProductsClient() {
       features,
       target_audience: formData.get("target_audience") ? String(formData.get("target_audience")) : null,
       hero_image_url: formData.get("hero_image_url") ? String(formData.get("hero_image_url")) : null,
+      image_url: formData.get("image_url") ? String(formData.get("image_url")) : null,
+      accent_color: formData.get("accent_color") ? String(formData.get("accent_color")) : null,
+      external_app_url: formData.get("external_app_url") ? String(formData.get("external_app_url")) : null,
+      cta_label: formData.get("cta_label") ? String(formData.get("cta_label")) : null,
+      cta_type: (formData.get("cta_type")
+        ? String(formData.get("cta_type"))
+        : null) as "learn_more" | "launch" | "contact" | "login" | null,
       is_active: formData.get("is_active") === "on",
       is_featured: formData.get("is_featured") === "on",
       sort_order: Number(formData.get("sort_order")),
@@ -251,6 +281,15 @@ export function MasterProductsClient() {
     }
   };
 
+  const toggleProductActive = async (product: SaasProduct) => {
+    const result = await setProductActive(product.id, !product.is_active);
+    if (result.ok) {
+      loadProducts();
+    } else {
+      alert(result.error ?? "Failed to update product visibility.");
+    }
+  };
+
   const saveFeature = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaving(true);
@@ -268,6 +307,7 @@ export function MasterProductsClient() {
         | "support"
         | "limit",
       is_highlighted: formData.get("is_highlighted") === "on",
+      is_active: formData.get("is_active") === "on",
       sort_order: Number(formData.get("sort_order")),
     };
 
@@ -319,9 +359,12 @@ export function MasterProductsClient() {
       saas_product_id: String(formData.get("saas_product_id") ?? ""),
       plan_id: formData.get("plan_id") ? String(formData.get("plan_id")) : null,
       tier_name: String(formData.get("tier_name") ?? ""),
+      description: formData.get("description") ? String(formData.get("description")) : null,
       price_monthly: Number(formData.get("price_monthly")),
       price_yearly: Number(formData.get("price_yearly")),
+      currency: String(formData.get("currency") ?? "INR"),
       is_popular: formData.get("is_popular") === "on",
+      is_active: formData.get("is_active") === "on",
       features,
       limits,
       sort_order: Number(formData.get("sort_order")),
@@ -450,6 +493,62 @@ export function MasterProductsClient() {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="image_url">Logo / Image URL</Label>
+                  <Input
+                    id="image_url"
+                    name="image_url"
+                    defaultValue={editingProduct?.image_url ?? ""}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="accent_color">Accent Color (hex)</Label>
+                  <Input
+                    id="accent_color"
+                    name="accent_color"
+                    placeholder="#6D28D9"
+                    defaultValue={editingProduct?.accent_color ?? ""}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="external_app_url">External App URL</Label>
+                  <Input
+                    id="external_app_url"
+                    name="external_app_url"
+                    placeholder="https://app.example.com"
+                    defaultValue={editingProduct?.external_app_url ?? ""}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="cta_label">CTA Label (optional)</Label>
+                  <Input
+                    id="cta_label"
+                    name="cta_label"
+                    placeholder="Launch E-Inventory"
+                    defaultValue={editingProduct?.cta_label ?? ""}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="cta_type">CTA Type</Label>
+                <Select
+                  name="cta_type"
+                  defaultValue={editingProduct?.cta_type ?? "learn_more"}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="learn_more">Learn more</SelectItem>
+                    <SelectItem value="launch">Launch</SelectItem>
+                    <SelectItem value="contact">Contact sales</SelectItem>
+                    <SelectItem value="login">Login</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2">
                   <Checkbox
@@ -521,7 +620,12 @@ export function MasterProductsClient() {
                   {product.tagline}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  slug: {product.slug} · sort_order: {product.sort_order}
+                  slug: {product.slug} · display order: {product.sort_order} ·{" "}
+                  {product.product_features?.length ?? 0} feature(s) ·{" "}
+                  {product.product_pricing?.length ?? 0} pricing tier(s)
+                  {product.external_app_url
+                    ? ` · ext: ${product.external_app_url}`
+                    : ""}
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -531,6 +635,18 @@ export function MasterProductsClient() {
                   onClick={() => openProductDialog(product)}
                 >
                   <Pencil className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => toggleProductActive(product)}
+                  title={product.is_active ? "Unpublish" : "Publish"}
+                >
+                  {product.is_active ? (
+                    <Eye className="size-4" />
+                  ) : (
+                    <EyeOff className="size-4 text-muted-foreground" />
+                  )}
                 </Button>
                 <Button
                   variant="ghost"
@@ -716,6 +832,14 @@ export function MasterProductsClient() {
               />
               <Label htmlFor="is_highlighted">Highlighted</Label>
             </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="is_active"
+                name="is_active"
+                defaultChecked={editingFeature?.is_active ?? true}
+              />
+              <Label htmlFor="is_active">Active (shown publicly)</Label>
+            </div>
             <div className="space-y-1">
               <Label htmlFor="sort_order">Sort Order</Label>
               <Input
@@ -792,6 +916,15 @@ export function MasterProductsClient() {
               </div>
             </div>
             <div className="space-y-1">
+              <Label htmlFor="currency">Currency</Label>
+              <Input
+                id="currency"
+                name="currency"
+                placeholder="INR"
+                defaultValue={editingPricing?.currency ?? "INR"}
+              />
+            </div>
+            <div className="space-y-1">
               <Label htmlFor="features">Features (JSON)</Label>
               <Textarea
                 id="features"
@@ -815,6 +948,14 @@ export function MasterProductsClient() {
                 }
               />
             </div>
+            <div className="space-y-1">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                name="description"
+                defaultValue={editingPricing?.description ?? ""}
+              />
+            </div>
             <div className="flex items-center gap-2">
               <Checkbox
                 id="is_popular"
@@ -822,6 +963,14 @@ export function MasterProductsClient() {
                 defaultChecked={editingPricing?.is_popular ?? false}
               />
               <Label htmlFor="is_popular">Popular</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="is_active"
+                name="is_active"
+                defaultChecked={editingPricing?.is_active ?? true}
+              />
+              <Label htmlFor="is_active">Active (shown publicly)</Label>
             </div>
             <div className="space-y-1">
               <Label htmlFor="sort_order">Sort Order</Label>

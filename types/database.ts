@@ -863,6 +863,11 @@ export type Database = {
           features: Json;
           target_audience: string | null;
           hero_image_url: string | null;
+          image_url: string | null;
+          accent_color: string | null;
+          external_app_url: string | null;
+          cta_label: string | null;
+          cta_type: string | null;
           is_active: boolean;
           is_featured: boolean;
           sort_order: number;
@@ -879,6 +884,11 @@ export type Database = {
           features?: Json;
           target_audience?: string | null;
           hero_image_url?: string | null;
+          image_url?: string | null;
+          accent_color?: string | null;
+          external_app_url?: string | null;
+          cta_label?: string | null;
+          cta_type?: string | null;
           is_active?: boolean;
           is_featured?: boolean;
           sort_order?: number;
@@ -895,6 +905,11 @@ export type Database = {
           features?: Json;
           target_audience?: string | null;
           hero_image_url?: string | null;
+          image_url?: string | null;
+          accent_color?: string | null;
+          external_app_url?: string | null;
+          cta_label?: string | null;
+          cta_type?: string | null;
           is_active?: boolean;
           is_featured?: boolean;
           sort_order?: number;
@@ -913,6 +928,7 @@ export type Database = {
           feature_description: string;
           feature_type: "capability" | "integration" | "support" | "limit";
           is_highlighted: boolean;
+          is_active: boolean;
           sort_order: number;
           created_at: string;
           updated_at: string;
@@ -925,6 +941,7 @@ export type Database = {
           feature_description: string;
           feature_type: "capability" | "integration" | "support" | "limit";
           is_highlighted?: boolean;
+          is_active?: boolean;
           sort_order?: number;
           created_at?: string;
           updated_at?: string;
@@ -937,6 +954,7 @@ export type Database = {
           feature_description?: string;
           feature_type?: "capability" | "integration" | "support" | "limit";
           is_highlighted?: boolean;
+          is_active?: boolean;
           sort_order?: number;
           created_at?: string;
           updated_at?: string;
@@ -958,9 +976,12 @@ export type Database = {
           saas_product_id: string;
           plan_id: string | null;
           tier_name: string;
+          description: string | null;
           price_monthly: number;
           price_yearly: number;
+          currency: string;
           is_popular: boolean;
+          is_active: boolean;
           features: Json;
           limits: Json;
           sort_order: number;
@@ -972,9 +993,12 @@ export type Database = {
           saas_product_id: string;
           plan_id?: string | null;
           tier_name: string;
+          description?: string | null;
           price_monthly: number;
           price_yearly: number;
+          currency?: string;
           is_popular?: boolean;
+          is_active?: boolean;
           features?: Json;
           limits?: Json;
           sort_order?: number;
@@ -986,9 +1010,12 @@ export type Database = {
           saas_product_id?: string;
           plan_id?: string | null;
           tier_name?: string;
+          description?: string | null;
           price_monthly?: number;
           price_yearly?: number;
+          currency?: string;
           is_popular?: boolean;
+          is_active?: boolean;
           features?: Json;
           limits?: Json;
           sort_order?: number;

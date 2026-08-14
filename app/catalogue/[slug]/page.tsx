@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
+const ACCENT_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
 export const metadata = {
   title: "Products — SBBT Software Platform",
   description:
@@ -21,9 +23,10 @@ export const metadata = {
 export default async function ProductDetailPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
   const supabase = await createSupabaseServerClient();
+  const { slug } = await params;
 
   const { data: product } = await supabase
     .from("saas_products")
@@ -31,17 +34,18 @@ export default async function ProductDetailPage({
       `
       id, name, slug, tagline, description, short_description,
       features, target_audience, hero_image_url,
+      image_url, accent_color, external_app_url, cta_label, cta_type,
       product_features (
         id, feature_key, feature_name, feature_description,
-        feature_type, is_highlighted, sort_order
+        feature_type, is_highlighted, is_active, sort_order
       ),
       product_pricing (
-        id, tier_name, price_monthly, price_yearly,
-        is_popular, features, limits, sort_order
+        id, tier_name, description, price_monthly, price_yearly,
+        currency, is_popular, is_active, features, limits, sort_order
       )
     `,
     )
-    .eq("slug", params.slug)
+    .eq("slug", slug)
     .eq("is_active", true)
     .single();
 
@@ -62,6 +66,15 @@ export default async function ProductDetailPage({
   const highlightedFeatures = features?.filter((f) => f.is_highlighted);
   const otherFeatures = features?.filter((f) => !f.is_highlighted);
 
+  const accent =
+    product.accent_color && ACCENT_RE.test(product.accent_color)
+      ? product.accent_color
+      : null;
+  const launchHref = product.external_app_url || null;
+  const primaryLabel = launchHref
+    ? product.cta_label || `Launch ${product.name}`
+    : "Get started";
+
   return (
     <div className="flex min-h-screen flex-col">
       <PublicNavbar />
@@ -74,7 +87,11 @@ export default async function ProductDetailPage({
                 <Link href="/catalogue">← Back to catalogue</Link>
               </Button>
               <div className="mt-6">
-                <Badge variant="outline" className="text-[11px] uppercase tracking-widest">
+                <Badge
+                  variant="outline"
+                  className="text-[11px] uppercase tracking-widest"
+                  style={accent ? { borderColor: accent, color: accent } : undefined}
+                >
                   Product
                 </Badge>
                 <h1 className="mt-3 font-heading text-4xl font-bold tracking-tight sm:text-5xl">
@@ -85,12 +102,21 @@ export default async function ProductDetailPage({
                   {product.description}
                 </p>
                 <div className="mt-8 flex flex-wrap items-center gap-4">
-                  <Button size="lg" asChild>
-                    <Link href="#pricing">
-                      Get started
-                      <ArrowRight className="ml-2 size-4" />
-                    </Link>
-                  </Button>
+                  {launchHref ? (
+                    <Button size="lg" asChild>
+                      <a href={launchHref} target="_blank" rel="noopener noreferrer">
+                        {primaryLabel}
+                        <ArrowRight className="ml-2 size-4" />
+                      </a>
+                    </Button>
+                  ) : (
+                    <Button size="lg" asChild>
+                      <Link href="#pricing">
+                        {primaryLabel}
+                        <ArrowRight className="ml-2 size-4" />
+                      </Link>
+                    </Button>
+                  )}
                   <Button size="lg" variant="outline" asChild>
                     <Link href="/pricing">View all pricing</Link>
                   </Button>
