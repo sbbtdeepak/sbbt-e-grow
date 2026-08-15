@@ -10,6 +10,8 @@ type CTASectionProps = {
   description?: string;
   primaryLabel?: string;
   primaryHref?: string;
+  /** When true the primary CTA launches primaryHref in a new tab (external application). */
+  primaryExternal?: boolean;
   secondaryLabel?: string;
   secondaryHref?: string;
 };
@@ -20,6 +22,7 @@ export function CTASection({
   description,
   primaryLabel = "Explore Products",
   primaryHref = "/catalogue",
+  primaryExternal = false,
   secondaryLabel = "Get Started",
   secondaryHref = "/catalogue",
 }: CTASectionProps) {
@@ -36,10 +39,17 @@ export function CTASection({
         />
         <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
           <Button size="lg" asChild>
-            <Link href={primaryHref}>
-              {primaryLabel}
-              <ArrowRight className="ml-2 size-4" />
-            </Link>
+            {primaryExternal ? (
+              <a href={primaryHref} target="_blank" rel="noopener noreferrer">
+                {primaryLabel}
+                <ArrowRight className="ml-2 size-4" />
+              </a>
+            ) : (
+              <Link href={primaryHref}>
+                {primaryLabel}
+                <ArrowRight className="ml-2 size-4" />
+              </Link>
+            )}
           </Button>
           <Button size="lg" variant="outline" asChild>
             <Link href={secondaryHref}>{secondaryLabel}</Link>

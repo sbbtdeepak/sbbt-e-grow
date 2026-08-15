@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PublicNavbar } from "@/components/public/public-navbar";
 import { PublicFooter } from "@/components/public/public-footer";
 import { PublicProductCard } from "@/components/public/product-card";
+import { PublicPricingCard } from "@/components/public/pricing-card";
 import { SectionHeading } from "@/components/public/section-heading";
 import { CTASection } from "@/components/public/cta-section";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
 } from "lucide-react";
 
 export const metadata = {
-  title: "SBBT SaaS Platform — Purpose-Built Business Software",
+  title: "Purpose-Built Business Software",
   description:
     "SBBT builds practical business software for modern operations. Explore E-Grow and future SaaS products.",
 };
@@ -144,7 +145,7 @@ export default async function HomePage() {
 
   const { data: pricingTiers } = await supabase
     .from("product_pricing")
-    .select("id, tier_name, price_monthly, price_yearly, is_popular, features, limits, sort_order, saas_product_id")
+    .select("id, tier_name, description, price_monthly, price_yearly, currency, is_popular, features, limits, sort_order, saas_product_id")
     .eq("saas_product_id", featuredProduct?.id ?? "")
     .order("sort_order", { ascending: true });
 
@@ -393,37 +394,22 @@ export default async function HomePage() {
                 title="Transparent pricing for every stage."
                 description="Start free. Upgrade when you are ready."
               />
-              <div className="mx-auto mt-16 grid max-w-2xl grid-cols-1 gap-6 sm:grid-cols-2 lg:mx-0 lg:max-w-none">
-                {pricingTiers.slice(0, 3).map((tier) => (
-                  <Card
+              <div
+                className={cn(
+                  "mx-auto mt-16 grid max-w-2xl grid-cols-1 gap-6 sm:grid-cols-2 lg:mx-0 lg:max-w-none",
+                  pricingTiers.length === 3 && "lg:grid-cols-3",
+                )}
+              >
+                {pricingTiers.map((tier) => (
+                  <PublicPricingCard
                     key={tier.id}
-                    className={`flex flex-col border-border/60 bg-card/60 p-6 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:shadow-brand/5 hover:border-brand/30 ${
-                      tier.is_popular ? "border-brand/40 shadow-md shadow-brand/5" : ""
-                    }`}
-                  >
-                    {tier.is_popular && (
-                      <Badge className="mb-4 w-fit bg-brand text-brand-foreground text-[11px] uppercase tracking-wide">
-                        Recommended
-                      </Badge>
-                    )}
-                    <div>
-                      <h3 className="font-heading text-xl font-semibold">{tier.tier_name}</h3>
-                      <div className="mt-3 flex items-baseline gap-1">
-                        <span className="font-heading text-4xl font-bold">${tier.price_monthly}</span>
-                        <span className="text-base text-muted-foreground">/mo</span>
-                      </div>
-                      {tier.price_yearly > 0 && (
-                        <p className="mt-1.5 text-sm text-muted-foreground">${tier.price_yearly}/year</p>
-                      )}
-                    </div>
-                    <Button
-                      asChild
-                      className="mt-6 w-full"
-                      variant={tier.is_popular ? "default" : "outline"}
-                    >
-                      <Link href="/catalogue">Get started</Link>
-                    </Button>
-                  </Card>
+                    tier={tier}
+                    ctaHref={
+                      featuredProduct
+                        ? `/catalogue/${featuredProduct.slug}`
+                        : "/catalogue"
+                    }
+                  />
                 ))}
               </div>
               <div className="mt-10 text-center">

@@ -33,9 +33,15 @@ function currencySymbol(currency?: string): string {
 type PublicPricingCardProps = {
   tier: PricingTier;
   ctaHref?: string;
+  /** When true the CTA launches ctaHref in a new tab (external application). */
+  ctaExternal?: boolean;
 };
 
-export function PublicPricingCard({ tier, ctaHref = "/catalogue" }: PublicPricingCardProps) {
+export function PublicPricingCard({
+  tier,
+  ctaHref = "/catalogue",
+  ctaExternal = false,
+}: PublicPricingCardProps) {
   const symbol = currencySymbol(tier.currency);
   return (
     <Card
@@ -77,7 +83,13 @@ export function PublicPricingCard({ tier, ctaHref = "/catalogue" }: PublicPricin
         className="w-full"
         variant={tier.is_popular ? "default" : "outline"}
       >
-        <Link href={ctaHref}>Get started</Link>
+        {ctaExternal ? (
+          <a href={ctaHref} target="_blank" rel="noopener noreferrer">
+            Get started
+          </a>
+        ) : (
+          <Link href={ctaHref}>Get started</Link>
+        )}
       </Button>
 
       {Object.keys(tier.limits ?? {}).length > 0 && (

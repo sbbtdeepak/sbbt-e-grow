@@ -4,9 +4,10 @@ import { PublicNavbar } from "@/components/public/public-navbar";
 import { PublicFooter } from "@/components/public/public-footer";
 import { PublicPricingCard } from "@/components/public/pricing-card";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export const metadata = {
-  title: "Pricing — SBBT Software Platform",
+  title: "Pricing",
   description:
     "Simple, transparent pricing for live-commerce brands. Start free and scale as you grow.",
 };
@@ -27,6 +28,9 @@ export default async function PricingPage() {
     )
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
+
+  const productCount = products?.length ?? 0;
+  const singleProduct = productCount === 1;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -49,7 +53,12 @@ export default async function PricingPage() {
         <section className="py-20 md:py-24">
           <div className="mx-auto max-w-7xl px-6 lg:px-8">
             {products && products.length > 0 ? (
-              <div className="mx-auto grid max-w-2xl grid-cols-1 gap-8 sm:grid-cols-2 lg:mx-0 lg:max-w-none">
+              <div
+                className={cn(
+                  "mx-auto grid max-w-2xl grid-cols-1 gap-8 lg:mx-0 lg:max-w-none",
+                  !singleProduct && "sm:grid-cols-2",
+                )}
+              >
                 {products.map((product) => {
                   const pricing = product.product_pricing?.sort(
                     (a: { sort_order: number }, b: { sort_order: number }) =>
@@ -59,13 +68,23 @@ export default async function PricingPage() {
                   return (
                     <div
                       key={product.id}
-                      className="col-span-full sm:col-span-1 lg:col-span-1"
+                      className={cn(
+                        "col-span-full",
+                        !singleProduct && "sm:col-span-1",
+                      )}
                     >
                       <div className="mb-5">
                         <p className="font-heading text-xl font-semibold">{product.name}</p>
                         <p className="text-base text-muted-foreground">{product.tagline}</p>
                       </div>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                      {/* Single product: tiers flow across the full width.
+                          Multiple products: tiers stack within each half. */}
+                      <div
+                        className={cn(
+                          "grid grid-cols-1 gap-4",
+                          singleProduct && "sm:grid-cols-2 lg:grid-cols-3",
+                        )}
+                      >
                         {pricing?.map((tier) => (
                           <PublicPricingCard
                             key={tier.id}

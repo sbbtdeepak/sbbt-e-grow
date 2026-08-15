@@ -53,6 +53,8 @@ export function PublicNavbar() {
           type="button"
           className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:text-foreground"
           onClick={() => setOpen((prev) => !prev)}
+          aria-expanded={open}
+          aria-controls="public-mobile-nav"
           aria-label="Toggle menu"
         >
           {open ? <X className="size-6" /> : <Menu className="size-6" />}
@@ -60,7 +62,10 @@ export function PublicNavbar() {
       </div>
 
       {open && (
-        <div className="border-t border-border/60 bg-background/95 backdrop-blur-md md:hidden">
+        <div
+          id="public-mobile-nav"
+          className="border-t border-border/60 bg-background/95 backdrop-blur-md md:hidden"
+        >
           <nav className="flex flex-col gap-1 px-6 py-6">
             {navLinks.map((link) => (
               <Link

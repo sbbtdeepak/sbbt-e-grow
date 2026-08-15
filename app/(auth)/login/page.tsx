@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Sign in — SBBT E-Grow",
-  description: "Sign in to your SBBT E-Grow workspace.",
+  title: "Sign in",
+  description: "Sign in to your SBBT workspace.",
 };
 
 export default function LoginPage() {

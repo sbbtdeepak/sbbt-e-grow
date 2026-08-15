@@ -6,7 +6,7 @@ import { PublicProductCard } from "@/components/public/product-card";
 import { Button } from "@/components/ui/button";
 
 export const metadata = {
-  title: "SBBT Software Products — Purpose-Built Business Software",
+  title: "Software Products",
   description:
     "Explore the SBBT product suite. Purpose-built software for live-commerce, marketplace, and business operations.",
 };

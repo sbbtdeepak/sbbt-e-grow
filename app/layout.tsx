@@ -1,28 +1,26 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { QueryProvider } from "@/components/providers/query-provider";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
-    default: "SBBT E-Grow",
-    template: "%s — SBBT E-Grow",
+    default: "SBBT Software Platform — Purpose-Built Business Software",
+    template: "%s — SBBT Software Platform",
   },
   description:
-    "Multi-tenant ERP for live plant e-commerce businesses selling across Amazon, Meesho, Flipkart and more.",
+    "SBBT builds purpose-built SaaS products for modern business operations. Explore E-Grow and future products.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -32,7 +30,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={cn(
         "h-full",
         "antialiased",
-        geistSans.variable,
         geistMono.variable,
         "font-sans",
         inter.variable,
