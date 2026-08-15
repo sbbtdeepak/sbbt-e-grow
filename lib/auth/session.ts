@@ -10,6 +10,8 @@ export type SessionContext = {
   role: UserRole;
   companyId: string | null;
   isActive: boolean;
+  /** True only for a Supabase recovery session (password-reset flow). */
+  isRecovery: boolean;
 };
 
 /**
@@ -27,6 +29,34 @@ export const getSessionContext = cache(
 
     if (!user) return null;
 
+    // A password-recovery session is established by the auth callback after
+    // the user follows the emailed link. GoTrue records it as an "amr"
+    // claim (method "recovery") inside the access token — it is not exposed
+    // on the user object — so decode the JWT payload to detect it. Any
+    // decode failure (malformed token) is treated as "not a recovery
+    // session", which only makes the reset form stricter, never looser.
+    let isRecovery = false;
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session) {
+        const payload = JSON.parse(
+          Buffer.from(session.access_token.split(".")[1], "base64url").toString("utf-8"),
+        );
+        const amr: unknown = payload?.amr;
+        isRecovery =
+          Array.isArray(amr) &&
+          amr.some((entry) =>
+            typeof entry === "string"
+              ? entry === "recovery"
+              : (entry as { method?: string })?.method === "recovery",
+          );
+      }
+    } catch {
+      isRecovery = false;
+    }
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("id, company_id, role, is_active")
@@ -41,6 +71,7 @@ export const getSessionContext = cache(
       role: profile.role,
       companyId: profile.company_id,
       isActive: profile.is_active ?? true,
+      isRecovery,
     };
   },
 );
