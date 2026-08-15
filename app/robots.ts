@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
+import { getSiteUrl } from "@/lib/site";
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const siteUrl = getSiteUrl();
 
 /**
  * robots.txt — public marketing site only. ERP, auth, onboarding, and master

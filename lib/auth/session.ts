@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { redirect } from "next/navigation";
+import { forbidden, redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/database";
@@ -68,7 +68,8 @@ export async function requireUser() {
 export async function requireCompanyUser() {
   const ctx = await requireUser();
   if (!ctx.companyId) {
-    throw new Error("User is not assigned to a company.");
+    // Authenticated user with no company on a company-scoped page/action.
+    forbidden(); // renders app/forbidden.tsx (HTTP 403)
   }
   return { ...ctx, companyId: ctx.companyId };
 }
@@ -77,12 +78,17 @@ export async function requireCompanyUser() {
  * Requires user to hold one of given roles.
  * Uses requireUser() (not requireCompanyUser()) so master_admin
  * (who has companyId = null) can access master-only endpoints.
+ *
+ * Authenticated-but-wrong-role requests are denied via forbidden()
+ * (HTTP 403 + app/forbidden.tsx) — never a generic error boundary and
+ * never a client-side check. Unauthenticated users still redirect to
+ * /login via requireUser().
  */
 export async function requireRole(allowed: UserRole | UserRole[]) {
   const roles = Array.isArray(allowed) ? allowed : [allowed];
   const ctx = await requireUser();
   if (!roles.includes(ctx.role)) {
-    throw new Error("Not authorized.");
+    forbidden(); // renders app/forbidden.tsx (HTTP 403)
   }
   return ctx;
 }

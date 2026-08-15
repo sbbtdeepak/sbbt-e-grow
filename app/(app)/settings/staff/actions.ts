@@ -7,6 +7,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCompanyUser } from "@/lib/auth/session";
 import { assertWithinLimit, EntitlementError } from "@/lib/saas/entitlements";
 import { mapDbError } from "@/lib/saas/db-errors";
+import { getSiteUrl } from "@/lib/site";
 import {
   MODULE_PERMISSIONS,
   DEFAULT_STAFF_PERMISSIONS,
@@ -223,7 +224,7 @@ export async function inviteStaff(
     const { data: inviteData, error: inviteError } =
       await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
         data: { full_name: fullName ?? null, role: "staff" },
-        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+        redirectTo: `${getSiteUrl()}/auth/callback`,
       });
 
     if (inviteError) {

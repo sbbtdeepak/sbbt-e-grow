@@ -1,11 +1,13 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
+import { requireRole } from "@/lib/auth/session";
 import { getPlans } from "@/app/master/companies/actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function MasterPlansPage() {
+  await requireRole("master_admin");
   const result = await getPlans();
   const plans = result.ok ? result.data : [];
 

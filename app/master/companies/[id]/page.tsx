@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { requireRole } from "@/lib/auth/session";
 import { CompanyDetailClient } from "@/components/master/company-detail-client";
 import { getCompanyDetail, getPlans } from "@/app/master/companies/actions";
 
@@ -13,6 +14,7 @@ export default async function CompanyDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireRole("master_admin");
   const { id } = await params;
   const detail = await getCompanyDetail(id);
   const plans = await getPlans();

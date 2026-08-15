@@ -1,8 +1,8 @@
 import type { MetadataRoute } from "next";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site";
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const siteUrl = getSiteUrl();
 
 /**
  * Public sitemap. Includes only public, active pages — never ERP, master,
