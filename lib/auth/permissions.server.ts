@@ -58,9 +58,13 @@ export const getUserPermissions = cache(
 
     const supabase = await createSupabaseServerClient();
 
+    // Scope strictly to the current user — never merge another staff
+    // member's rows. RLS is company-scoped, so the user_id filter is
+    // required here to prevent cross-user permission inheritance.
     const { data, error } = await supabase
       .from("user_permissions")
       .select("permission, is_allowed")
+      .eq("user_id", ctx.userId)
       .eq("company_id", ctx.companyId);
 
     if (error || !data) {

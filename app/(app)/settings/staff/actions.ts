@@ -129,6 +129,20 @@ export async function inviteStaff(
     return { ok: false, error: "A valid email address is required." };
   }
 
+  // Staff limit check must run BEFORE any Auth user is created/invited,
+  // otherwise a failed limit check leaves an orphaned Auth user behind.
+  // Every successful invite path below adds a new active staff profile
+  // (and thus consumes one staff slot), so the check applies to both
+  // the new-user invite and the existing-user association paths.
+  try {
+    await assertWithinLimit("staff_users_limit", 1);
+  } catch (err) {
+    if (err instanceof EntitlementError) {
+      return { ok: false, error: err.message };
+    }
+    return { ok: false, error: "Unable to verify staff limits." };
+  }
+
   const admin = await createSupabaseAdminClient();
 
   // Check if an Auth user already exists with this email.
@@ -177,16 +191,6 @@ export async function inviteStaff(
         error: "This user is already a member of your company.",
       };
     }
-  }
-
-  // Staff limit check — active staff count must stay within limit.
-  try {
-    await assertWithinLimit("staff_users_limit", 1);
-  } catch (err) {
-    if (err instanceof EntitlementError) {
-      return { ok: false, error: err.message };
-    }
-    return { ok: false, error: "Unable to verify staff limits." };
   }
 
   // Create or update the profile.

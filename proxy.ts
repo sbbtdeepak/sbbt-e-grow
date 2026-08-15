@@ -7,12 +7,14 @@ import { createSupabaseProxyClient } from "@/lib/supabase/proxy";
  *
  * Responsibilities:
  *  - Refresh the Supabase auth session on every matched request.
- *  - Protect app routes under `/(app)` by redirecting unauthenticated
+ *  - Optimistically protect `/dashboard` by redirecting unauthenticated
  *    users to `/login`.
  *  - Redirect authenticated users away from `/login` to `/dashboard`.
  *
- * Auth is NOT fully enforced here — this is an optimistic check.
- * Row Level Security is the source of truth for data access.
+ * NOTE: This proxy-level guard currently checks `/dashboard` only. The
+ * remaining authenticated app routes are protected by the `(app)` layout
+ * (`requireUser`) plus per-page/per-action server-side guards, and Row
+ * Level Security is the source of truth for data access.
  */
 export async function proxy(request: NextRequest) {
   const { supabase, response } = createSupabaseProxyClient(request);

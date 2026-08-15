@@ -34,9 +34,6 @@ async function MasterRouter() {
       <Link href="/master/products" className="group block p-4 border rounded hover:bg-primary/10 transition-colors">
         Products
       </Link>
-      <Link href="/master/settings" className="group block p-4 border rounded hover:bg-primary/10 transition-colors">
-        Settings
-      </Link>
     </div>
   );
 }

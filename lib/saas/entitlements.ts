@@ -282,10 +282,19 @@ export async function assertWithinLimit(
 }
 
 /**
- * Assert that the company has an active subscription.
- * Grandfathered companies (no subscription row) are allowed to keep using
- * the system under the Free plan fallback — a missing subscription is handled
- * here, not by silently creating one.
+ * Reserved enforcement point for subscription status.
+ *
+ * CURRENT BEHAVIOR (intentional): this function does NOT block anyone.
+ *  - Master Admin always passes.
+ *  - Grandfathered companies (no subscription row) keep working under the
+ *    Free plan fallback — a missing subscription is intentionally not treated
+ *    as a denial and is never silently created.
+ *  - Companies whose subscription is cancelled/expired are also intentionally
+ *    not blocked here; feature/limit enforcement happens via
+ *    hasFeature()/assertWithinLimit() against the effective plan.
+ *
+ * The function exists as a future hook for billing-gate enforcement; it is
+ * currently a no-op by design and is not called anywhere.
  */
 export async function assertSubscriptionActive(): Promise<void> {
   const master = await isMasterAdmin();
