@@ -224,6 +224,7 @@ export function MasterProductsClient() {
 
   const saveProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     setFormError(null);
 
@@ -292,6 +293,7 @@ export function MasterProductsClient() {
 
   const saveFeature = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     setFormError(null);
 
@@ -337,6 +339,7 @@ export function MasterProductsClient() {
 
   const savePricing = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     setFormError(null);
 
@@ -407,17 +410,32 @@ export function MasterProductsClient() {
               Add Product
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
+          <DialogContent
+            className="flex max-h-[85dvh] max-w-2xl flex-col overflow-hidden"
+            onInteractOutside={(e: { preventDefault: () => void }) =>
+              e.preventDefault()
+            }
+            onEscapeKeyDown={(e: { preventDefault: () => void }) =>
+              e.preventDefault()
+            }
+          >
+            <DialogHeader className="shrink-0">
               <DialogTitle>
                 {editingProduct?.id ? "Edit Product" : "New Product"}
               </DialogTitle>
             </DialogHeader>
-            <form onSubmit={saveProduct} className="space-y-4">
+            <form
+              onSubmit={saveProduct}
+              className="flex min-h-0 grow flex-col overflow-hidden"
+            >
+              <input type="hidden" name="id" value={editingProduct?.id ?? ""} />
+              <fieldset
+                disabled={saving}
+                className="min-h-0 grow space-y-4 overflow-y-auto pr-2"
+              >
               {formError && (
                 <p className="text-sm text-destructive">{formError}</p>
               )}
-              <input type="hidden" name="id" value={editingProduct?.id ?? ""} />
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label htmlFor="name">Name</Label>
@@ -576,10 +594,12 @@ export function MasterProductsClient() {
                   defaultValue={editingProduct?.sort_order ?? 0}
                 />
               </div>
-              <div className="flex justify-end gap-2">
+              </fieldset>
+              <div className="flex shrink-0 flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
                 <Button
                   type="button"
                   variant="outline"
+                  disabled={saving}
                   onClick={() => setProductDialogOpen(false)}
                 >
                   Cancel
@@ -764,22 +784,37 @@ export function MasterProductsClient() {
       </div>
 
       <Dialog open={featureDialogOpen} onOpenChange={setFeatureDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent
+          className="flex max-h-[85dvh] flex-col overflow-hidden"
+          onInteractOutside={(e: { preventDefault: () => void }) =>
+            e.preventDefault()
+          }
+          onEscapeKeyDown={(e: { preventDefault: () => void }) =>
+            e.preventDefault()
+          }
+        >
+          <DialogHeader className="shrink-0">
             <DialogTitle>
               {editingFeature?.id ? "Edit Feature" : "New Feature"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={saveFeature} className="space-y-4">
-            {formError && (
-              <p className="text-sm text-destructive">{formError}</p>
-            )}
+          <form
+            onSubmit={saveFeature}
+            className="flex min-h-0 grow flex-col overflow-hidden"
+          >
             <input
               type="hidden"
               name="saas_product_id"
               value={editingFeature?.saas_product_id}
             />
             <input type="hidden" name="id" value={editingFeature?.id ?? ""} />
+            <fieldset
+              disabled={saving}
+              className="min-h-0 grow space-y-4 overflow-y-auto pr-2"
+            >
+            {formError && (
+              <p className="text-sm text-destructive">{formError}</p>
+            )}
             <div className="space-y-1">
               <Label htmlFor="feature_key">Feature Key</Label>
               <Input
@@ -849,10 +884,12 @@ export function MasterProductsClient() {
                 defaultValue={editingFeature?.sort_order ?? 0}
               />
             </div>
-            <div className="flex justify-end gap-2">
+            </fieldset>
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
+                disabled={saving}
                 onClick={() => setFeatureDialogOpen(false)}
               >
                 Cancel
@@ -866,22 +903,37 @@ export function MasterProductsClient() {
       </Dialog>
 
       <Dialog open={pricingDialogOpen} onOpenChange={setPricingDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent
+          className="flex max-h-[85dvh] flex-col overflow-hidden"
+          onInteractOutside={(e: { preventDefault: () => void }) =>
+            e.preventDefault()
+          }
+          onEscapeKeyDown={(e: { preventDefault: () => void }) =>
+            e.preventDefault()
+          }
+        >
+          <DialogHeader className="shrink-0">
             <DialogTitle>
               {editingPricing?.id ? "Edit Pricing Tier" : "New Pricing Tier"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={savePricing} className="space-y-4">
-            {formError && (
-              <p className="text-sm text-destructive">{formError}</p>
-            )}
+          <form
+            onSubmit={savePricing}
+            className="flex min-h-0 grow flex-col overflow-hidden"
+          >
             <input
               type="hidden"
               name="saas_product_id"
               value={editingPricing?.saas_product_id}
             />
             <input type="hidden" name="id" value={editingPricing?.id ?? ""} />
+            <fieldset
+              disabled={saving}
+              className="min-h-0 grow space-y-4 overflow-y-auto pr-2"
+            >
+            {formError && (
+              <p className="text-sm text-destructive">{formError}</p>
+            )}
             <div className="space-y-1">
               <Label htmlFor="tier_name">Tier Name</Label>
               <Input
@@ -981,10 +1033,12 @@ export function MasterProductsClient() {
                 defaultValue={editingPricing?.sort_order ?? 0}
               />
             </div>
-            <div className="flex justify-end gap-2">
+            </fieldset>
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
+                disabled={saving}
                 onClick={() => setPricingDialogOpen(false)}
               >
                 Cancel
