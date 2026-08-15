@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireCompanyUser, canMutateMasterData } from "@/lib/auth/session";
 import { productSchema, type ActionResult, type ProductInput } from "@/lib/validations/catalog";
+import { mapDbError } from "@/lib/saas/db-errors";
 import {
   assertWithinLimit,
   EntitlementError,
@@ -61,7 +62,7 @@ export async function createProduct(
     if (error.code === "23505") {
       return { ok: false, error: "Product with this SKU already exists." };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/products");
@@ -108,7 +109,7 @@ export async function updateProduct(
     if (error.code === "23505") {
       return { ok: false, error: "Product with this SKU already exists." };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/products");
@@ -139,7 +140,7 @@ export async function deleteProduct(id: string): Promise<ActionResult> {
         error: "Product is referenced by orders and cannot be deleted.",
       };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/products");

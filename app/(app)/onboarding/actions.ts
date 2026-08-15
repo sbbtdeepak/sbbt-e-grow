@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/auth/session";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 export type OnboardingState = {
   currentStep: number; // 1-6
@@ -39,7 +40,7 @@ export async function getOnboardingState(): Promise<{
     .maybeSingle();
 
   if (error) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   if (!data) {
@@ -97,7 +98,7 @@ export async function saveOnboardingState(step: number, completed = false) {
     );
 
   if (error) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/onboarding");
@@ -143,7 +144,7 @@ export async function skipOnboardingStep(skipKey: "skippedMarketplaces" | "skipp
     );
 
   if (error) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/onboarding");

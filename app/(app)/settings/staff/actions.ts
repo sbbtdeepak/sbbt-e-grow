@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCompanyUser } from "@/lib/auth/session";
 import { assertWithinLimit, EntitlementError } from "@/lib/saas/entitlements";
+import { mapDbError } from "@/lib/saas/db-errors";
 import {
   MODULE_PERMISSIONS,
   DEFAULT_STAFF_PERMISSIONS,
@@ -33,6 +34,66 @@ function isCompanyAdmin(role: string): boolean {
   return role === "company_admin";
 }
 
+type AuthUserLookup =
+  | { ok: true; user: { id: string; email: string } | null }
+  | { ok: false; error: string };
+
+/**
+ * Find an auth user by email via paginated admin lookup.
+ *
+ * `admin.auth.admin.listUsers()` returns only the first page
+ * (default 50 users), so a direct call misses users beyond page 1
+ * and can produce false "user not found" results or duplicate
+ * invites. This walks pages of up to 1000 users until the email
+ * matches or the list is exhausted. Emails are unique in Supabase
+ * Auth, so the first match is authoritative.
+ */
+async function findUserByEmail(
+  admin: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  email: string,
+): Promise<AuthUserLookup> {
+  const target = email.trim().toLowerCase();
+  const perPage = 1000;
+  let page = 1;
+
+  for (;;) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      return { ok: false, error: mapDbError(error, "Unable to look up users.") };
+    }
+
+    const users = data?.users ?? [];
+    const match = users.find((u) => u.email?.toLowerCase() === target);
+    if (match) {
+      return { ok: true, user: { id: match.id, email: match.email ?? "" } };
+    }
+    if (users.length < perPage) {
+      return { ok: true, user: null };
+    }
+    page += 1;
+  }
+}
+
+/**
+ * Resolve emails for a set of user ids via targeted admin lookups.
+ * Bounded by the company's staff count (itself capped by the
+ * staff_users_limit), so this stays cheap and is exact regardless
+ * of total platform user count.
+ */
+async function getEmailsForUserIds(
+  admin: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  userIds: string[],
+): Promise<Map<string, string>> {
+  const results = await Promise.all(
+    userIds.map(async (uid) => {
+      const { data, error } = await admin.auth.admin.getUserById(uid);
+      if (error) return [uid, ""] as const;
+      return [uid, data?.user?.email ?? ""] as const;
+    }),
+  );
+  return new Map(results);
+}
+
 /**
  * List all staff members in the current company with their permissions.
  * Only company_admin can view the list.
@@ -55,17 +116,19 @@ export async function listStaff(): Promise<StaffListResult> {
     .order("created_at", { ascending: false });
 
   if (profileErr) {
-    return { ok: false, error: profileErr.message };
+    return { ok: false, error: mapDbError(profileErr, "Unable to load staff.") };
   }
 
   if (!profiles || profiles.length === 0) {
     return { ok: true, data: [] };
   }
 
-  // Fetch auth user emails via admin (profiles has no email column).
-  const { data: authUsers } = await admin.auth.admin.listUsers();
-  const userEmails = new Map(
-    (authUsers?.users ?? []).map((u) => [u.id, u.email ?? ""]),
+  // Resolve auth user emails via targeted per-user lookups (profiles
+  // has no email column). Bounded by staff count — never a full
+  // platform-wide user scan.
+  const userEmails = await getEmailsForUserIds(
+    admin,
+    profiles.map((p) => p.id),
   );
 
   // Fetch all permission rows for company staff in one query.
@@ -145,18 +208,14 @@ export async function inviteStaff(
 
   const admin = await createSupabaseAdminClient();
 
-  // Check if an Auth user already exists with this email.
-  const { data: existing, error: listError } =
-    await admin.auth.admin.listUsers();
-
-  if (listError) {
-    return { ok: false, error: listError.message };
+  // Check if an Auth user already exists with this email (paginated
+  // lookup — correct even past the first 50 users).
+  const lookup = await findUserByEmail(admin, trimmedEmail);
+  if (!lookup.ok) {
+    return { ok: false, error: lookup.error };
   }
 
-  const matchingUser = existing?.users.find(
-    (u) => u.email?.toLowerCase() === trimmedEmail,
-  );
-
+  const matchingUser = lookup.user;
   let userId: string;
 
   if (!matchingUser) {
@@ -168,7 +227,7 @@ export async function inviteStaff(
       });
 
     if (inviteError) {
-      return { ok: false, error: inviteError.message };
+      return { ok: false, error: mapDbError(inviteError, "Failed to create the invitation.") };
     }
     if (!inviteData?.user?.id) {
       return { ok: false, error: "Failed to create invitation." };
@@ -203,7 +262,7 @@ export async function inviteStaff(
   });
 
   if (profileError) {
-    return { ok: false, error: profileError.message };
+    return { ok: false, error: mapDbError(profileError, "Unable to create the staff profile.") };
   }
 
   // Insert default permission rows for the new staff member.
@@ -219,7 +278,7 @@ export async function inviteStaff(
     .upsert(permRows);
 
   if (permError) {
-    return { ok: false, error: permError.message };
+    return { ok: false, error: mapDbError(permError, "Unable to save staff permissions.") };
   }
 
   revalidatePath("/settings/staff");
@@ -246,7 +305,7 @@ export async function activateStaff(userId: string): Promise<StaffActionResult> 
     .eq("role", "staff")
     .maybeSingle();
 
-  if (fetchErr) return { ok: false, error: fetchErr.message };
+  if (fetchErr) return { ok: false, error: mapDbError(fetchErr, "Unable to load the staff member.") };
   if (!profile) return { ok: false, error: "Staff member not found." };
 
   // Only check limit when transitioning from inactive → active.
@@ -268,7 +327,7 @@ export async function activateStaff(userId: string): Promise<StaffActionResult> 
     .eq("company_id", ctx.companyId)
     .eq("role", "staff");
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error, "Unable to activate the staff member.") };
 
   // Ensure default permissions exist.
   const existingPerms = await admin
@@ -317,7 +376,7 @@ export async function deactivateStaff(userId: string): Promise<StaffActionResult
     .eq("role", "staff")
     .eq("is_active", true);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error, "Unable to deactivate the staff member.") };
 
   revalidatePath("/settings/staff");
   return { ok: true };
@@ -342,14 +401,38 @@ export async function updateStaffPermission(
 
   const admin = await createSupabaseAdminClient();
 
-  const { error } = await admin.from("user_permissions").upsert({
-    user_id: userId,
-    company_id: ctx.companyId,
-    permission,
-    is_allowed: isAllowed,
-  });
+  // Verify the target user is a staff member of the current company
+  // before writing any permission row. Never trust a client-supplied
+  // company id — the row is scoped to ctx.companyId below.
+  const { data: target, error: targetErr } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .eq("company_id", ctx.companyId)
+    .eq("role", "staff")
+    .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (targetErr) {
+    return { ok: false, error: mapDbError(targetErr, "Unable to verify staff member.") };
+  }
+  if (!target) {
+    return { ok: false, error: "Staff member not found in your company." };
+  }
+
+  // onConflict: the row identity is (user_id, company_id, permission) —
+  // without it PostgREST upserts on the surrogate id primary key, which
+  // makes re-toggling an existing permission fail with a unique violation.
+  const { error } = await admin.from("user_permissions").upsert(
+    {
+      user_id: userId,
+      company_id: ctx.companyId,
+      permission,
+      is_allowed: isAllowed,
+    },
+    { onConflict: "user_id,company_id,permission" },
+  );
+
+  if (error) return { ok: false, error: mapDbError(error, "Unable to update the permission.") };
 
   revalidatePath("/settings/staff");
   return { ok: true };
@@ -375,7 +458,7 @@ export async function removeStaff(userId: string): Promise<StaffActionResult> {
     .eq("company_id", ctx.companyId)
     .eq("role", "staff");
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error, "Unable to remove the staff member.") };
 
   revalidatePath("/settings/staff");
   return { ok: true };
@@ -393,11 +476,12 @@ export async function resendInvite(email: string): Promise<StaffActionResult> {
   const trimmedEmail = email.trim().toLowerCase();
   const admin = await createSupabaseAdminClient();
 
-  const { data: existing } = await admin.auth.admin.listUsers();
-  const matchingUser = existing?.users.find(
-    (u) => u.email?.toLowerCase() === trimmedEmail,
-  );
+  const lookup = await findUserByEmail(admin, trimmedEmail);
+  if (!lookup.ok) {
+    return { ok: false, error: lookup.error };
+  }
 
+  const matchingUser = lookup.user;
   if (!matchingUser) {
     return { ok: false, error: "User not found. Invite them first." };
   }
@@ -420,7 +504,7 @@ export async function resendInvite(email: string): Promise<StaffActionResult> {
     redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error, "Unable to resend the invitation.") };
 
   revalidatePath("/settings/staff");
   return { ok: true, data: { email: trimmedEmail } };

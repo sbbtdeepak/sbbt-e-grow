@@ -10,6 +10,7 @@ import {
   type DeliveryConfirmInput,
 } from "@/lib/validations/order";
 import type { ActionResult } from "@/lib/validations/catalog";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 /**
  * Bulk confirm delivery lines for an order.
@@ -52,7 +53,7 @@ export async function confirmDelivery(
     .eq("company_id", ctx.companyId)
     .maybeSingle();
 
-  if (orderError) return { ok: false, error: orderError.message };
+  if (orderError) return { ok: false, error: mapDbError(orderError) };
   if (!order) return { ok: false, error: "Order not found." };
   if (order.stage !== "delivery") {
     return {
@@ -76,7 +77,7 @@ export async function confirmDelivery(
       .eq("company_id", ctx.companyId)
       .eq("order_id", parsed.data.orderId);
 
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mapDbError(error) };
   }
 
   // No stage change — order stays at 'delivery'.

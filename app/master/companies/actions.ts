@@ -19,6 +19,7 @@ import type {
   Subscription,
 } from "@/lib/saas/entitlements";
 import type { Database } from "@/types/database";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 type CompanyWithSub = {
   company: Database["public"]["Tables"]["companies"]["Row"];
@@ -44,7 +45,7 @@ export async function getCompanies(): Promise<ActionResult<CompanyWithSub[]>> {
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (companiesError) return { ok: false, error: companiesError.message };
+  if (companiesError) return { ok: false, error: mapDbError(companiesError) };
 
   const companyIds = (companies ?? []).map((c) => c.id);
 
@@ -98,7 +99,7 @@ export async function getPlans(): Promise<ActionResult<Plan[]>> {
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   return { ok: true, data: plans ?? [] };
 }
@@ -268,7 +269,7 @@ export async function assignPlan(
       .select("*")
       .single();
 
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mapDbError(error) };
     revalidatePath("/master/companies");
     return { ok: true, data: updated };
   } else {
@@ -290,7 +291,7 @@ export async function assignPlan(
       .select("*")
       .single();
 
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mapDbError(error) };
     revalidatePath("/master/companies");
     return { ok: true, data: created };
   }
@@ -345,7 +346,7 @@ export async function changePlan(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath(`/master/companies/${parsed.data.companyId}`);
   revalidatePath("/master/companies");
@@ -399,7 +400,7 @@ export async function setSubscriptionStatus(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath(`/master/companies/${parsed.data.companyId}`);
   revalidatePath("/master/companies");
@@ -452,7 +453,7 @@ export async function startTrial(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath(`/master/companies/${parsed.data.companyId}`);
   revalidatePath("/master/companies");
@@ -516,7 +517,7 @@ export async function extendTrial(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath(`/master/companies/${parsed.data.companyId}`);
   revalidatePath("/master/companies");
@@ -579,7 +580,7 @@ export async function setSubscriptionPeriod(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath(`/master/companies/${parsed.data.companyId}`);
   revalidatePath("/master/companies");
@@ -628,7 +629,7 @@ export async function cancelSubscription(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath(`/master/companies/${parsed.data.companyId}`);
   revalidatePath("/master/companies");
@@ -695,7 +696,7 @@ export async function reactivateSubscription(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath(`/master/companies/${parsed.data.companyId}`);
   revalidatePath("/master/companies");

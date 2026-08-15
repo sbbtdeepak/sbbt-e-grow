@@ -10,6 +10,7 @@ import {
   type PaymentConfirmInput,
 } from "@/lib/validations/order";
 import type { ActionResult } from "@/lib/validations/catalog";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 /**
  * Create expected payment record for a delivered order.
@@ -49,7 +50,7 @@ export async function createExpectedPayment(
     .eq("company_id", ctx.companyId)
     .maybeSingle();
 
-  if (orderError) return { ok: false, error: orderError.message };
+  if (orderError) return { ok: false, error: mapDbError(orderError) };
   if (!order) return { ok: false, error: "Order not found." };
   if (order.stage !== "delivery") {
     return {
@@ -65,7 +66,7 @@ export async function createExpectedPayment(
     .eq("order_id", order.id)
     .eq("company_id", ctx.companyId);
 
-  if (itemsError) return { ok: false, error: itemsError.message };
+  if (itemsError) return { ok: false, error: mapDbError(itemsError) };
 
   const amountExpected = items?.reduce((sum, i) => sum + (i.total_sale || 0), 0) || 0;
   const amountReceived = parsed.data.amountReceived || 0;
@@ -86,7 +87,7 @@ export async function createExpectedPayment(
     payment_notes: parsed.data.paymentNotes,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/payments");
   return { ok: true, data: undefined };
@@ -129,7 +130,7 @@ export async function receivePayment(
     .eq("company_id", ctx.companyId)
     .maybeSingle();
 
-  if (existingError) return { ok: false, error: existingError.message };
+  if (existingError) return { ok: false, error: mapDbError(existingError) };
   if (!existing) return { ok: false, error: "Payment record not found." };
 
   const amountExpected = existing.amount_expected;
@@ -152,7 +153,7 @@ export async function receivePayment(
     .eq("id", existing.id)
     .eq("company_id", ctx.companyId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/payments");
   return { ok: true, data: undefined };

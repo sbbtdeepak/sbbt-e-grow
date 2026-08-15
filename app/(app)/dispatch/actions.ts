@@ -10,6 +10,7 @@ import {
   type DispatchConfirmInput,
 } from "@/lib/validations/order";
 import type { ActionResult } from "@/lib/validations/catalog";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 /**
  * Bulk confirm dispatch lines for an order.
@@ -50,7 +51,7 @@ export async function confirmDispatch(
     .eq("company_id", ctx.companyId)
     .maybeSingle();
 
-  if (orderError) return { ok: false, error: orderError.message };
+  if (orderError) return { ok: false, error: mapDbError(orderError) };
   if (!order) return { ok: false, error: "Order not found." };
   if (order.stage !== "dispatch") {
     return {
@@ -74,7 +75,7 @@ export async function confirmDispatch(
       .eq("company_id", ctx.companyId)
       .eq("order_id", parsed.data.orderId);
 
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mapDbError(error) };
   }
 
   // Move the order to 'delivery' stage.
@@ -84,7 +85,7 @@ export async function confirmDispatch(
     .eq("id", parsed.data.orderId)
     .eq("company_id", ctx.companyId);
 
-  if (stageError) return { ok: false, error: stageError.message };
+  if (stageError) return { ok: false, error: mapDbError(stageError) };
 
   revalidatePath("/dispatch");
   revalidatePath("/delivery");

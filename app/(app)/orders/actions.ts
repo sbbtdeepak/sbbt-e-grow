@@ -11,6 +11,7 @@ import {
   assertWithinLimit,
   EntitlementError,
 } from "@/lib/saas/entitlements";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 /**
  * Shared validation + authorization for order entry.
@@ -74,6 +75,32 @@ async function verifyMarketplaceSeller(
 }
 
 /**
+ * Verify every order-line product belongs to the current company.
+ * One batched query for all product IDs (no N+1). Any foreign
+ * product rejects the entire operation before anything is written.
+ */
+async function verifyProductsOwned(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  companyId: string,
+  productIds: string[],
+): Promise<string | null> {
+  const uniqueIds = [...new Set(productIds)];
+
+  const { data: products, error } = await supabase
+    .from("products")
+    .select("id")
+    .in("id", uniqueIds)
+    .eq("company_id", companyId);
+
+  if (error) return "Unable to verify products.";
+  if (!products || products.length !== uniqueIds.length) {
+    return "One or more selected products do not belong to your company.";
+  }
+
+  return null;
+}
+
+/**
  * Save an order as a draft (stage = 'entry').
  * Order lines are stored with ordered_qty only; buy/packed/delivered = 0.
  */
@@ -102,6 +129,13 @@ export async function saveOrderDraft(
   );
   if (verifyError) return { ok: false, error: verifyError };
 
+  const productError = await verifyProductsOwned(
+    supabase,
+    validated.companyId,
+    validated.data.lines.map((line) => line.productId),
+  );
+  if (productError) return { ok: false, error: productError };
+
   // Insert order header
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -117,7 +151,7 @@ export async function saveOrderDraft(
     .select("id")
     .single();
 
-  if (orderError) return { ok: false, error: orderError.message };
+  if (orderError) return { ok: false, error: mapDbError(orderError, "Unable to save the order.") };
 
   // Insert order lines
   const lines = validated.data.lines.map((line) => ({
@@ -140,7 +174,7 @@ export async function saveOrderDraft(
   if (linesError) {
     // Roll back the header if lines fail.
     await supabase.from("orders").delete().eq("id", order.id);
-    return { ok: false, error: linesError.message };
+    return { ok: false, error: mapDbError(linesError, "Unable to save the order lines.") };
   }
 
   revalidatePath("/orders");
@@ -180,6 +214,13 @@ export async function confirmOrderEntry(
   );
   if (verifyError) return { ok: false, error: verifyError };
 
+  const productError = await verifyProductsOwned(
+    supabase,
+    validated.companyId,
+    validated.data.lines.map((line) => line.productId),
+  );
+  if (productError) return { ok: false, error: productError };
+
   // Insert order header with stage = 'purchase'
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -195,7 +236,7 @@ export async function confirmOrderEntry(
     .select("id")
     .single();
 
-  if (orderError) return { ok: false, error: orderError.message };
+  if (orderError) return { ok: false, error: mapDbError(orderError, "Unable to save the order.") };
 
   // Insert order lines with buy_qty auto-copied from ordered_qty
   const lines = validated.data.lines.map((line) => ({
@@ -217,7 +258,7 @@ export async function confirmOrderEntry(
 
   if (linesError) {
     await supabase.from("orders").delete().eq("id", order.id);
-    return { ok: false, error: linesError.message };
+    return { ok: false, error: mapDbError(linesError, "Unable to save the order lines.") };
   }
 
   revalidatePath("/orders");

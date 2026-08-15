@@ -14,6 +14,7 @@ import {
   assertWithinLimit,
   EntitlementError,
 } from "@/lib/saas/entitlements";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 // ============================================================
 // MARKETPLACE ACTIONS
@@ -66,7 +67,7 @@ export async function createMarketplace(
         error: "A marketplace with this slug already exists.",
       };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/marketplaces");
@@ -110,7 +111,7 @@ export async function updateMarketplace(
         error: "A marketplace with this slug already exists.",
       };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/marketplaces");
@@ -139,7 +140,7 @@ export async function deleteMarketplace(id: string): Promise<ActionResult> {
           "Marketplace is referenced by seller accounts or orders and cannot be deleted.",
       };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/marketplaces");
@@ -213,7 +214,7 @@ export async function createSellerAccount(
         error: "A seller account with this name already exists in this marketplace.",
       };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/marketplaces");
@@ -269,7 +270,7 @@ export async function updateSellerAccount(
         error: "A seller account with this name already exists in this marketplace.",
       };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/marketplaces");
@@ -297,7 +298,7 @@ export async function deleteSellerAccount(id: string): Promise<ActionResult> {
         error: "Seller account is referenced by orders and cannot be deleted.",
       };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapDbError(error) };
   }
 
   revalidatePath("/marketplaces");

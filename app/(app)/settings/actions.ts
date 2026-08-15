@@ -17,6 +17,7 @@ import {
   getFeatureLimit,
 } from "@/lib/saas/entitlements";
 import type { Plan, Subscription } from "@/lib/saas/entitlements";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 // ─── Company Profile ──────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ export async function getCompanyProfile() {
     .eq("id", ctx.companyId)
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
   if (!data) return { ok: false, error: "Company not found." };
 
   return {
@@ -93,7 +94,7 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
     })
     .eq("id", ctx.companyId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/settings");
   return { ok: true, data: undefined };
@@ -165,7 +166,7 @@ export async function updateAccountProfile(fullName: string | null): Promise<
     })
     .eq("id", ctx.userId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/settings");
   return { ok: true };
@@ -203,7 +204,7 @@ export async function changePassword(
     password: parsed.data.newPassword,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/settings");
   return { ok: true };

@@ -10,6 +10,7 @@ import {
   type PurchaseConfirmInput,
 } from "@/lib/validations/order";
 import type { ActionResult } from "@/lib/validations/catalog";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 /**
  * Update buy_qty and vendor_notes for a single order item.
@@ -48,7 +49,7 @@ export async function updatePurchaseLine(
     .eq("company_id", ctx.companyId)
     .maybeSingle();
 
-  if (itemError) return { ok: false, error: itemError.message };
+  if (itemError) return { ok: false, error: mapDbError(itemError) };
   if (!item) return { ok: false, error: "Order item not found." };
 
   const order = Array.isArray(item.orders) ? item.orders[0] : item.orders;
@@ -68,7 +69,7 @@ export async function updatePurchaseLine(
     .eq("id", orderItemId)
     .eq("company_id", ctx.companyId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/purchase");
   return { ok: true, data: undefined };
@@ -111,7 +112,7 @@ export async function confirmPurchase(
     .eq("company_id", ctx.companyId)
     .maybeSingle();
 
-  if (orderError) return { ok: false, error: orderError.message };
+  if (orderError) return { ok: false, error: mapDbError(orderError) };
   if (!order) return { ok: false, error: "Order not found." };
   if (order.stage !== "purchase") {
     return {
@@ -138,7 +139,7 @@ export async function confirmPurchase(
       .eq("company_id", ctx.companyId)
       .eq("order_id", parsed.data.orderId);
 
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mapDbError(error) };
   }
 
   // Move the order to 'packing' stage.
@@ -148,7 +149,7 @@ export async function confirmPurchase(
     .eq("id", parsed.data.orderId)
     .eq("company_id", ctx.companyId);
 
-  if (stageError) return { ok: false, error: stageError.message };
+  if (stageError) return { ok: false, error: mapDbError(stageError) };
 
   revalidatePath("/purchase");
   return { ok: true, data: undefined };

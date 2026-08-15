@@ -5,6 +5,7 @@ import { requireCompanyUser } from "@/lib/auth/session";
 import { assertPermission, PermissionError } from "@/lib/auth/permissions.server";
 import { reportFilterSchema, type ReportFilterInput } from "@/lib/validations/reports";
 import type { ActionResult } from "@/lib/validations/catalog";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 const VIEW_MAP: Record<ReportFilterInput["reportType"], string> = {
   daily_sales: "report_daily_sales",
@@ -89,7 +90,7 @@ export async function getReportData(input: ReportFilterInput): Promise<ActionRes
 
   const { data, error } = await query;
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   return { ok: true, data: data ?? [] };
 }
@@ -133,7 +134,7 @@ export async function exportReportCsv(input: ReportFilterInput): Promise<ActionR
   }
 
   const { data, error } = await query;
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   const rows = data ?? [];
   if (rows.length === 0) return { ok: true, data: "" };

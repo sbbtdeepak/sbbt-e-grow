@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/session";
 import type { Database } from "@/types/database";
+import { mapDbError } from "@/lib/saas/db-errors";
 
 type ActionResult<T = undefined> =
   | { ok: true; data: T }
@@ -97,7 +98,7 @@ export async function getSaaSProducts(): Promise<
     )
     .order("sort_order", { ascending: true });
 
-  if (productsError) return { ok: false, error: productsError.message };
+  if (productsError) return { ok: false, error: mapDbError(productsError) };
 
   return { ok: true, data: products ?? [] };
 }
@@ -127,7 +128,7 @@ export async function createSaaSProduct(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
@@ -157,7 +158,7 @@ export async function setProductActive(
     .update({ is_active: isActive })
     .eq("id", id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
@@ -193,7 +194,7 @@ export async function updateSaaSProduct(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
@@ -218,7 +219,7 @@ export async function deleteSaaSProduct(
     .delete()
     .eq("id", id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
@@ -252,7 +253,7 @@ export async function createProductFeature(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
@@ -288,7 +289,7 @@ export async function updateProductFeature(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
@@ -313,7 +314,7 @@ export async function deleteProductFeature(
     .delete()
     .eq("id", id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
@@ -347,7 +348,7 @@ export async function createProductPricing(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
@@ -383,7 +384,7 @@ export async function updateProductPricing(
     .select("*")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
@@ -408,7 +409,7 @@ export async function deleteProductPricing(
     .delete()
     .eq("id", id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: mapDbError(error) };
 
   revalidatePath("/master/products");
   revalidatePath("/catalogue");
