@@ -7,9 +7,7 @@ const footerColumns = [
     title: "Products",
     links: [
       { href: "/catalogue", label: "All Products" },
-      { href: "/catalogue/e-grow-standard", label: "E-Grow Standard" },
-      { href: "/catalogue/e-grow-enterprise", label: "E-Grow Enterprise" },
-      { href: "/catalogue/e-grow-startup", label: "E-Grow Startup" },
+      { href: "/catalogue/e-grow", label: "E-Grow" },
     ],
   },
   {

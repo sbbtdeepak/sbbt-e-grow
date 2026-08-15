@@ -134,10 +134,18 @@ export default async function HomePage() {
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
 
+  // Pricing preview is driven by the featured product (deterministic tiebreak:
+  // lowest sort_order), never by array position — adding E-Inventory or other
+  // future products must not replace E-Grow on the homepage.
+  const featuredProduct =
+    allProducts
+      ?.filter((p) => p.is_featured)
+      .sort((a, b) => a.sort_order - b.sort_order)[0] ?? allProducts?.[0];
+
   const { data: pricingTiers } = await supabase
     .from("product_pricing")
     .select("id, tier_name, price_monthly, price_yearly, is_popular, features, limits, sort_order, saas_product_id")
-    .eq("saas_product_id", allProducts?.[0]?.id ?? "")
+    .eq("saas_product_id", featuredProduct?.id ?? "")
     .order("sort_order", { ascending: true });
 
   return (
@@ -277,7 +285,7 @@ export default async function HomePage() {
                 </p>
                 <div className="mt-8 flex flex-wrap items-center gap-4">
                   <Button size="lg" asChild>
-                    <Link href="/catalogue/e-grow-standard">
+                    <Link href="/catalogue/e-grow">
                       Explore E-Grow
                       <ArrowRight className="ml-2 size-4" />
                     </Link>
