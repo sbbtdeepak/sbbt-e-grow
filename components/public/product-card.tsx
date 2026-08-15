@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { currencySymbol, type PricePoint } from "@/lib/saas/catalogue";
 import type { Json } from "@/types/database";
 
 type SaasProduct = {
@@ -54,9 +55,14 @@ function resolveCta(product: SaasProduct) {
 
 type PublicProductCardProps = {
   product: SaasProduct;
+  /** Cheapest active tier price, when the product has active pricing. */
+  priceFrom?: PricePoint | null;
 };
 
-export function PublicProductCard({ product }: PublicProductCardProps) {
+export function PublicProductCard({
+  product,
+  priceFrom = null,
+}: PublicProductCardProps) {
   const initials = product.name
     .split(" ")
     .map((w) => w[0])
@@ -74,6 +80,7 @@ export function PublicProductCard({ product }: PublicProductCardProps) {
   const ctaEl = cta.external ? (
     <a href={cta.href} target="_blank" rel="noopener noreferrer">
       {cta.label}
+      <span className="sr-only"> (opens in new tab)</span>
       <ArrowRight className="ml-2 size-4" />
     </a>
   ) : (
@@ -144,6 +151,17 @@ export function PublicProductCard({ product }: PublicProductCardProps) {
               ))}
             </ul>
           )}
+
+        {priceFrom && (
+          <p className="mt-6 text-sm text-muted-foreground">
+            From{" "}
+            <span className="font-semibold text-foreground">
+              {currencySymbol(priceFrom.currency)}
+              {priceFrom.amount}
+            </span>
+            /mo
+          </p>
+        )}
 
         <div className="mt-8 flex items-center gap-2">
           <Button asChild size="default" className="flex-1">

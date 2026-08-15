@@ -27,6 +27,7 @@ export default async function PricingPage() {
     `,
     )
     .eq("is_active", true)
+    .eq("product_pricing.is_active", true)
     .order("sort_order", { ascending: true });
 
   const productCount = products?.length ?? 0;
@@ -110,9 +111,11 @@ export default async function PricingPage() {
 
         <section className="border-t border-border/60 bg-muted/20 py-16 md:py-24">
           <div className="mx-auto max-w-7xl px-6 lg:px-8 text-center">
-            <p className="text-lg text-muted-foreground">Need a custom plan?</p>
+            <p className="text-lg text-muted-foreground">
+              Not sure which product fits your business?
+            </p>
             <Button asChild className="mt-4">
-              <Link href="/catalogue">Contact sales</Link>
+              <Link href="/catalogue">Browse products</Link>
             </Button>
           </div>
         </section>

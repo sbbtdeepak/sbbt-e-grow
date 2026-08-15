@@ -653,6 +653,7 @@ export function MasterProductsClient() {
                   variant="ghost"
                   size="icon"
                   onClick={() => openProductDialog(product)}
+                  aria-label={`Edit ${product.name}`}
                 >
                   <Pencil className="size-4" />
                 </Button>
@@ -661,6 +662,11 @@ export function MasterProductsClient() {
                   size="icon"
                   onClick={() => toggleProductActive(product)}
                   title={product.is_active ? "Unpublish" : "Publish"}
+                  aria-label={
+                    product.is_active
+                      ? `Unpublish ${product.name}`
+                      : `Publish ${product.name}`
+                  }
                 >
                   {product.is_active ? (
                     <Eye className="size-4" />
@@ -672,6 +678,7 @@ export function MasterProductsClient() {
                   variant="ghost"
                   size="icon"
                   onClick={() => deleteProduct(product.id)}
+                  aria-label={`Delete ${product.name}`}
                 >
                   <Trash2 className="size-4 text-destructive" />
                 </Button>
@@ -713,6 +720,7 @@ export function MasterProductsClient() {
                         variant="ghost"
                         size="icon"
                         onClick={() => openFeatureDialog(product, feature)}
+                        aria-label={`Edit feature ${feature.feature_name}`}
                       >
                         <Pencil className="size-3" />
                       </Button>
@@ -720,6 +728,7 @@ export function MasterProductsClient() {
                         variant="ghost"
                         size="icon"
                         onClick={() => deleteFeature(feature.id)}
+                        aria-label={`Delete feature ${feature.feature_name}`}
                       >
                         <Trash2 className="size-3 text-destructive" />
                       </Button>
@@ -764,6 +773,7 @@ export function MasterProductsClient() {
                         variant="ghost"
                         size="icon"
                         onClick={() => openPricingDialog(product, tier)}
+                        aria-label={`Edit tier ${tier.tier_name}`}
                       >
                         <Pencil className="size-3" />
                       </Button>
@@ -771,6 +781,7 @@ export function MasterProductsClient() {
                         variant="ghost"
                         size="icon"
                         onClick={() => deletePricing(tier.id)}
+                        aria-label={`Delete tier ${tier.tier_name}`}
                       >
                         <Trash2 className="size-3 text-destructive" />
                       </Button>

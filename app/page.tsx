@@ -6,6 +6,10 @@ import { PublicProductCard } from "@/components/public/product-card";
 import { PublicPricingCard } from "@/components/public/pricing-card";
 import { SectionHeading } from "@/components/public/section-heading";
 import { CTASection } from "@/components/public/cta-section";
+import {
+  cheapestActivePrice,
+  currencySymbol,
+} from "@/lib/saas/catalogue";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -131,8 +135,12 @@ export default async function HomePage() {
 
   const { data: allProducts } = await supabase
     .from("saas_products")
-    .select("id, name, slug, tagline, short_description, features, target_audience, is_featured, is_active, sort_order")
+    .select(
+      `id, name, slug, tagline, short_description, description, features, target_audience, is_featured, is_active, sort_order,
+      product_pricing (price_monthly, currency, is_active)`,
+    )
     .eq("is_active", true)
+    .eq("product_pricing.is_active", true)
     .order("sort_order", { ascending: true });
 
   // Pricing preview is driven by the featured product (deterministic tiebreak:
@@ -147,7 +155,34 @@ export default async function HomePage() {
     .from("product_pricing")
     .select("id, tier_name, description, price_monthly, price_yearly, currency, is_popular, features, limits, sort_order, saas_product_id")
     .eq("saas_product_id", featuredProduct?.id ?? "")
+    .eq("is_active", true)
     .order("sort_order", { ascending: true });
+
+  // Genuine platform numbers for the hero panel. Counts are scoped to the
+  // public catalogue explicitly (active product + active item) so the same
+  // numbers render for anonymous visitors and logged-in admins alike — RLS
+  // alone would let a master_admin session see inactive rows too.
+  const activeProductIds = (allProducts ?? []).map((p) => p.id);
+  const countScoped = async (
+    table: "product_pricing" | "product_features",
+  ) => {
+    if (activeProductIds.length === 0) return 0;
+    const { count } = await supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .eq("is_active", true)
+      .in("saas_product_id", activeProductIds);
+    return count ?? 0;
+  };
+  const [tierCount, featureCount] = await Promise.all([
+    countScoped("product_pricing"),
+    countScoped("product_features"),
+  ]);
+
+  const featuredPrice = cheapestActivePrice(pricingTiers);
+  const featuredProductFeatures = Array.isArray(featuredProduct?.features)
+    ? (featuredProduct?.features as unknown[]).filter((f): f is string => typeof f === "string")
+    : [];
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -184,51 +219,68 @@ export default async function HomePage() {
               </div>
             </div>
 
-            {/* Hero visual */}
+            {/* Hero visual — genuine platform information, no invented statistics */}
             <div className="mx-auto mt-16 max-w-5xl">
               <div className="relative rounded-2xl border border-border/60 bg-card/60 p-4 shadow-2xl shadow-brand/5 md:p-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-                  <div className="md:col-span-2 space-y-4">
-                    <div className="flex items-center gap-4 rounded-xl border border-border/60 bg-muted/40 p-5">
-                      <div className="flex size-10 items-center justify-center rounded-lg bg-brand/10">
-                        <BarChart3 className="size-5 text-brand" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Revenue</p>
-                        <p className="font-heading text-xl font-semibold">$128,430</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-border/60 bg-muted/40 p-5">
-                        <p className="text-sm text-muted-foreground">Orders</p>
-                        <p className="font-heading text-2xl font-semibold">1,284</p>
-                      </div>
-                      <div className="rounded-xl border border-border/60 bg-muted/40 p-5">
-                        <p className="text-sm text-muted-foreground">Fulfillment</p>
-                        <p className="font-heading text-2xl font-semibold">98.2%</p>
-                      </div>
-                    </div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-brand">
+                  SBBT platform at a glance
+                </p>
+                <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
+                  <div className="rounded-xl border border-border/60 bg-muted/40 p-5">
+                    <p className="font-heading text-2xl font-semibold">
+                      {allProducts?.length ?? 0}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Active software products
+                    </p>
                   </div>
-                  <div className="space-y-4">
-                    <div className="rounded-xl border border-border/60 bg-muted/40 p-5">
-                      <p className="text-sm text-muted-foreground">Channels</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {["Amazon", "Meesho", "Website"].map((ch) => (
-                          <Badge key={ch} variant="secondary" className="text-[11px]">
-                            {ch}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-muted/40 p-5">
-                      <p className="text-sm text-muted-foreground">Stage</p>
-                      <p className="mt-1 font-heading text-base font-semibold">Dispatch</p>
-                      <div className="mt-3 h-2 w-full rounded-full bg-muted">
-                        <div className="h-2 w-3/4 rounded-full bg-brand" />
-                      </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/40 p-5">
+                    <p className="font-heading text-2xl font-semibold">{tierCount ?? 0}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Pricing tiers</p>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/40 p-5">
+                    <p className="font-heading text-2xl font-semibold">{featureCount ?? 0}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Product capabilities</p>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/40 p-5">
+                    <p className="font-heading text-sm font-semibold">Multi-channel</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {["Amazon", "Meesho", "Website"].map((ch) => (
+                        <Badge key={ch} variant="secondary" className="text-[11px]">
+                          {ch}
+                        </Badge>
+                      ))}
                     </div>
                   </div>
                 </div>
+                {featuredProduct && (
+                  <div className="mt-4 flex flex-col items-start justify-between gap-4 rounded-xl border border-border/60 bg-muted/40 p-5 sm:flex-row sm:items-center">
+                    <div>
+                      <p className="text-sm font-semibold">{featuredProduct.name}</p>
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        {featuredProduct.tagline}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {featuredPrice && (
+                        <p className="text-sm text-muted-foreground">
+                          From{" "}
+                          <span className="font-semibold text-foreground">
+                            {currencySymbol(featuredPrice.currency)}
+                            {featuredPrice.amount}
+                          </span>
+                          /mo
+                        </p>
+                      )}
+                      <Button size="sm" asChild>
+                        <Link href={`/catalogue/${featuredProduct.slug}`}>
+                          Explore
+                          <ArrowRight className="ml-1.5 size-3.5" />
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -261,62 +313,105 @@ export default async function HomePage() {
             />
             <div className="mx-auto mt-16 grid max-w-2xl grid-cols-1 gap-6 sm:grid-cols-2 lg:mx-0 lg:max-w-none">
               {allProducts?.map((product) => (
-                <PublicProductCard key={product.id} product={product} />
+                <PublicProductCard
+                  key={product.id}
+                  product={product}
+                  priceFrom={cheapestActivePrice(product.product_pricing)}
+                />
               ))}
             </div>
           </div>
         </section>
 
-        {/* E-Grow flagship */}
-        <section className="border-y border-border/60 bg-muted/20 py-20 md:py-28" id="features">
-          <div className="mx-auto max-w-7xl px-6 lg:px-8">
-            <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-16">
-              <div className="flex flex-col justify-center">
-                <Badge variant="outline" className="w-fit text-[11px] uppercase tracking-widest border-brand/30 text-brand">
-                  Flagship Product
-                </Badge>
-                <h2 className="mt-4 font-heading text-4xl font-bold tracking-tight sm:text-5xl">
-                  E-Grow
-                </h2>
-                <p className="mt-4 text-xl text-muted-foreground">
-                  Run your marketplace business from one place.
-                </p>
-                <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-                  From order entry to payment reconciliation, every step is designed for speed and accuracy. E-Grow is the complete live-commerce operating system trusted by growing brands.
-                </p>
-                <div className="mt-8 flex flex-wrap items-center gap-4">
-                  <Button size="lg" asChild>
-                    <Link href="/catalogue/e-grow">
-                      Explore E-Grow
-                      <ArrowRight className="ml-2 size-4" />
-                    </Link>
-                  </Button>
-                  <Button size="lg" variant="outline" asChild>
-                    <Link href="/pricing">View Pricing</Link>
-                  </Button>
-                </div>
-              </div>
-
-              <div className="relative">
-                <div className="rounded-2xl border border-border/60 bg-card/60 p-6 shadow-xl shadow-brand/5">
-                  <div className="grid grid-cols-2 gap-3">
-                    {egrowWorkflow.map((step, idx) => (
-                      <div key={step.label} className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/40 p-3">
-                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand/10">
-                          <step.icon className="size-4 text-brand" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-brand">{String(idx + 1).padStart(2, "0")}</p>
-                          <p className="text-sm font-semibold">{step.label}</p>
-                        </div>
-                      </div>
-                    ))}
+        {/* Flagship product — data-driven from the featured active product */}
+        {featuredProduct && (
+          <section className="border-y border-border/60 bg-muted/20 py-20 md:py-28" id="features">
+            <div className="mx-auto max-w-7xl px-6 lg:px-8">
+              <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-16">
+                <div className="flex flex-col justify-center">
+                  <Badge variant="outline" className="w-fit text-[11px] uppercase tracking-widest border-brand/30 text-brand">
+                    Flagship Product
+                  </Badge>
+                  <h2 className="mt-4 font-heading text-4xl font-bold tracking-tight sm:text-5xl">
+                    {featuredProduct.name}
+                  </h2>
+                  <p className="mt-4 text-xl text-muted-foreground">
+                    {featuredProduct.tagline}
+                  </p>
+                  <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+                    {featuredProduct.description}
+                  </p>
+                  {featuredPrice && (
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      From{" "}
+                      <span className="font-semibold text-foreground">
+                        {currencySymbol(featuredPrice.currency)}
+                        {featuredPrice.amount}
+                      </span>
+                      /mo
+                    </p>
+                  )}
+                  <div className="mt-8 flex flex-wrap items-center gap-4">
+                    <Button size="lg" asChild>
+                      <Link href={`/catalogue/${featuredProduct.slug}`}>
+                        Explore {featuredProduct.name}
+                        <ArrowRight className="ml-2 size-4" />
+                      </Link>
+                    </Button>
+                    <Button size="lg" variant="outline" asChild>
+                      <Link href="/pricing">View Pricing</Link>
+                    </Button>
                   </div>
+                </div>
+
+                <div className="relative">
+                  {featuredProduct.slug === "e-grow" ? (
+                    /* E-Grow-specific ERP workflow strip */
+                    <div className="rounded-2xl border border-border/60 bg-card/60 p-6 shadow-xl shadow-brand/5">
+                      <div className="grid grid-cols-2 gap-3">
+                        {egrowWorkflow.map((step, idx) => (
+                          <div key={step.label} className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/40 p-3">
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand/10">
+                              <step.icon className="size-4 text-brand" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-brand">{String(idx + 1).padStart(2, "0")}</p>
+                              <p className="text-sm font-semibold">{step.label}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Generic capability panel for any future product */
+                    <div className="rounded-2xl border border-border/60 bg-card/60 p-6 shadow-xl shadow-brand/5">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-brand">
+                        Highlights
+                      </p>
+                      {featuredProductFeatures.length > 0 ? (
+                        <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {featuredProductFeatures.slice(0, 6).map((feature) => (
+                            <li
+                              key={feature}
+                              className="flex items-start gap-2.5 rounded-xl border border-border/60 bg-muted/40 p-3 text-sm text-muted-foreground"
+                            >
+                              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-brand" />
+                              <span>{feature}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+                          {featuredProduct.tagline}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Feature grid - Bento style */}
         <section className="py-20 md:py-24" id="how-it-works">

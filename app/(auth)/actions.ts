@@ -37,7 +37,8 @@ export async function signInAction(
   });
 
   if (error) {
-    return { message: error.message ?? "Unable to sign in." };
+    // Generic message — never leak Supabase auth internals to visitors.
+    return { message: "Unable to sign in. Please check your email and password." };
   }
 
   revalidatePath("/", "layout");

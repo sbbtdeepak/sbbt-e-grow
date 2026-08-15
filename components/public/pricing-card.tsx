@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { currencySymbol } from "@/lib/saas/catalogue";
 import type { Json } from "@/types/database";
 
 type PricingTier = {
@@ -18,16 +19,34 @@ type PricingTier = {
   limits: Json;
 };
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  INR: "₹",
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-};
+/**
+ * Per-tier "what's included" list. Supports the two JSONB shapes stored by
+ * Master Admin:
+ *  - object of key → truthy/falsy flags: render only enabled keys
+ *  - array of strings: render as a plain bullet list
+ */
+function includedFeatures(features: Json): string[] {
+  if (Array.isArray(features)) {
+    return features.filter((f): f is string => typeof f === "string");
+  }
+  if (features && typeof features === "object") {
+    return Object.entries(features as Record<string, unknown>)
+      .filter(([, value]) => Boolean(value))
+      .map(([key]) => key.replace(/_/g, " "));
+  }
+  return [];
+}
 
-function currencySymbol(currency?: string): string {
-  if (currency && CURRENCY_SYMBOLS[currency]) return CURRENCY_SYMBOLS[currency];
-  return "$";
+/**
+ * Actual annual saving when paying yearly instead of 12× monthly.
+ * Returns null when there is no meaningful saving (yearly >= monthly × 12).
+ */
+function savingsPercent(monthly: number, yearly: number): number | null {
+  if (monthly <= 0 || yearly <= 0) return null;
+  const annualEquivalent = monthly * 12;
+  if (annualEquivalent <= yearly) return null;
+  const pct = Math.round(((annualEquivalent - yearly) / annualEquivalent) * 100);
+  return pct >= 5 ? pct : null;
 }
 
 type PublicPricingCardProps = {
@@ -43,6 +62,9 @@ export function PublicPricingCard({
   ctaExternal = false,
 }: PublicPricingCardProps) {
   const symbol = currencySymbol(tier.currency);
+  const savings = savingsPercent(tier.price_monthly, tier.price_yearly);
+  const included = includedFeatures(tier.features);
+
   return (
     <Card
       className={cn(
@@ -70,7 +92,13 @@ export function PublicPricingCard({
         {tier.price_yearly > 0 && (
           <p className="mt-1.5 text-sm text-muted-foreground">
             {symbol}
-            {tier.price_yearly}/year · save ~17%
+            {tier.price_yearly}/year
+            {savings !== null && (
+              <span className="text-emerald-600 dark:text-emerald-400">
+                {" "}
+                · save {savings}%
+              </span>
+            )}
           </p>
         )}
         {tier.description && (
@@ -86,11 +114,28 @@ export function PublicPricingCard({
         {ctaExternal ? (
           <a href={ctaHref} target="_blank" rel="noopener noreferrer">
             Get started
+            <span className="sr-only"> (opens in new tab)</span>
           </a>
         ) : (
           <Link href={ctaHref}>Get started</Link>
         )}
       </Button>
+
+      {included.length > 0 && (
+        <div className="mt-8 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            What&apos;s included
+          </p>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            {included.map((feature) => (
+              <li key={feature} className="flex items-start gap-2.5">
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brand" />
+                <span className="capitalize">{feature}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {Object.keys(tier.limits ?? {}).length > 0 && (
         <div className="mt-8 space-y-3">

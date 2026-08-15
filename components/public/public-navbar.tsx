@@ -24,7 +24,7 @@ export function PublicNavbar() {
             SBBT
           </span>
           <span className="hidden sm:inline text-base text-muted-foreground font-medium">
-            E-Grow
+            Software Platform
           </span>
         </Link>
 

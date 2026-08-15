@@ -166,6 +166,8 @@ export default async function ProductDetailPage({
     )
     .eq("slug", slug)
     .eq("is_active", true)
+    .eq("product_features.is_active", true)
+    .eq("product_pricing.is_active", true)
     .single();
 
   if (!product) {
@@ -262,6 +264,7 @@ export default async function ProductDetailPage({
                           rel="noopener noreferrer"
                         >
                           {primaryCta.label}
+                          <span className="sr-only"> (opens in new tab)</span>
                           <ArrowRight className="ml-2 size-4" />
                         </a>
                       </Button>

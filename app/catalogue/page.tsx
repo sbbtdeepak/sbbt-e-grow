@@ -4,6 +4,7 @@ import { PublicNavbar } from "@/components/public/public-navbar";
 import { PublicFooter } from "@/components/public/public-footer";
 import { PublicProductCard } from "@/components/public/product-card";
 import { Button } from "@/components/ui/button";
+import { cheapestActivePrice } from "@/lib/saas/catalogue";
 
 export const metadata = {
   title: "Software Products",
@@ -17,9 +18,11 @@ export default async function CataloguePage() {
   const { data: products } = await supabase
     .from("saas_products")
     .select(
-      "id, name, slug, tagline, short_description, features, target_audience, is_featured, is_active, sort_order, image_url, accent_color, external_app_url, cta_label, cta_type",
+      `id, name, slug, tagline, short_description, features, target_audience, is_featured, is_active, sort_order, image_url, accent_color, external_app_url, cta_label, cta_type,
+      product_pricing (price_monthly, currency, is_active)`,
     )
     .eq("is_active", true)
+    .eq("product_pricing.is_active", true)
     .order("sort_order", { ascending: true });
 
   return (
@@ -45,7 +48,11 @@ export default async function CataloguePage() {
             {products && products.length > 0 ? (
               <div className="mx-auto grid max-w-2xl grid-cols-1 gap-6 sm:grid-cols-2 lg:mx-0 lg:max-w-none">
                 {products.map((product) => (
-                  <PublicProductCard key={product.id} product={product} />
+                  <PublicProductCard
+                    key={product.id}
+                    product={product}
+                    priceFrom={cheapestActivePrice(product.product_pricing)}
+                  />
                 ))}
               </div>
             ) : (

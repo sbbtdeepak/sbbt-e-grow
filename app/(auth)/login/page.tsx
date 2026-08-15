@@ -19,9 +19,9 @@ export default function LoginPage() {
     <div className="flex min-h-svh items-center justify-center bg-muted/40 px-4 py-12">
       <Card className="w-full max-w-sm">
         <CardHeader className="gap-1">
-          <CardTitle className="text-2xl">SBBT E-Grow</CardTitle>
+          <CardTitle className="text-2xl">SBBT SaaS Platform</CardTitle>
           <CardDescription>
-            Sign in to manage your live plant e-commerce business.
+            Sign in to your SBBT workspace.
           </CardDescription>
         </CardHeader>
         <CardContent>

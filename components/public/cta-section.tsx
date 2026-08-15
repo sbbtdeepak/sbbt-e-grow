@@ -42,6 +42,7 @@ export function CTASection({
             {primaryExternal ? (
               <a href={primaryHref} target="_blank" rel="noopener noreferrer">
                 {primaryLabel}
+                <span className="sr-only"> (opens in new tab)</span>
                 <ArrowRight className="ml-2 size-4" />
               </a>
             ) : (

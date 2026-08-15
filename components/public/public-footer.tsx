@@ -64,7 +64,7 @@ export function PublicFooter() {
         <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-border/60 pt-8 md:flex-row">
           <div className="flex items-center gap-2">
             <span className="font-heading text-lg font-bold">SBBT</span>
-            <span className="text-muted-foreground">E-Grow</span>
+            <span className="text-muted-foreground">Software Platform</span>
           </div>
           <p className="text-sm text-muted-foreground">
             © {new Date().getFullYear()} SBBT. All rights reserved.
