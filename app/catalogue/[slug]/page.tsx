@@ -280,6 +280,18 @@ export default async function ProductDetailPage({
                       <Link href="/pricing">View all pricing</Link>
                     </Button>
                   </div>
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Need an account?{" "}
+                    <a
+                      href={`mailto:hello@sbbt.in?subject=${encodeURIComponent(
+                        `Request access — ${product.name}`,
+                      )}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      Request access
+                    </a>
+                    .
+                  </p>
                 </div>
 
                 {heroImage && (

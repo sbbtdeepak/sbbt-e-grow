@@ -5,13 +5,15 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireRole } from "@/lib/auth/session";
-import { getCompanies } from "@/app/master/companies/actions";
+import { getCompanies, getPlans } from "@/app/master/companies/actions";
+import { CreateCompanyDialog } from "./create-company-dialog";
 
 export const dynamic = "force-dynamic";
 
 export default async function MasterCompaniesPage() {
   await requireRole("master_admin");
   const result = await getCompanies();
+  const plans = await getPlans();
   const companies = result.ok ? result.data : [];
 
   return (
@@ -19,6 +21,7 @@ export default async function MasterCompaniesPage() {
       <PageHeader
         title="Companies"
         description="Manage companies, subscriptions, and plans."
+        actions={<CreateCompanyDialog plans={plans.ok ? plans.data : []} />}
       />
 
       {companies.length === 0 ? (

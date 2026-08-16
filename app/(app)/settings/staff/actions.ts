@@ -499,10 +499,12 @@ export async function resendInvite(email: string): Promise<StaffActionResult> {
     return { ok: false, error: "This user is not a member of your company." };
   }
 
-  // Re-send invite with the same redirect URL.
+  // Re-send invite with the same redirect URL (getSiteUrl() keeps the
+  // origin consistent with inviteStaff — never a raw env read that could
+  // produce "undefined/auth/callback" or a localhost fallback).
   const { error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
     data: { role: "staff" },
-    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+    redirectTo: `${getSiteUrl()}/auth/callback`,
   });
 
   if (error) return { ok: false, error: mapDbError(error, "Unable to resend the invitation.") };

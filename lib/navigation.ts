@@ -11,6 +11,8 @@ import {
   CreditCard,
   BarChart3,
   Settings,
+  Building2,
+  Gem,
 } from "lucide-react";
 
 export type NavItem = {
@@ -103,6 +105,51 @@ export const navItems: NavItem[] = [
     href: "/settings",
     icon: Settings,
     description: "Company settings and preferences.",
+    permission: null,
+  },
+];
+
+/**
+ * Master Admin navigation (SaaS control plane).
+ *
+ * Separate from the ERP navItems on purpose: master admins manage SaaS
+ * tenants, plans, and the public catalogue — never company-scoped ERP
+ * routes (which require a company session).
+ */
+export const masterNavItems: NavItem[] = [
+  {
+    title: "Dashboard",
+    href: "/master",
+    icon: LayoutDashboard,
+    description: "SaaS control center overview.",
+    permission: null,
+  },
+  {
+    title: "Companies",
+    href: "/master/companies",
+    icon: Building2,
+    description: "Manage SaaS tenants and subscriptions.",
+    permission: null,
+  },
+  {
+    title: "Plans",
+    href: "/master/plans",
+    icon: Gem,
+    description: "Subscription plans and feature limits.",
+    permission: null,
+  },
+  {
+    title: "Products",
+    href: "/master/products",
+    icon: Package,
+    description: "Public SaaS product catalogue.",
+    permission: null,
+  },
+  {
+    title: "Settings",
+    href: "/master/settings",
+    icon: Settings,
+    description: "Master Admin account.",
     permission: null,
   },
 ];

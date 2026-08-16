@@ -51,14 +51,17 @@ export async function getMasterDashboard() {
   const totalProfit = ordersRes.data?.reduce((sum, r) => sum + (r.total_profit || 0), 0) ?? 0;
   const pendingPayments = paymentsRes.count ?? 0;
 
+  // Master widgets must never link into company-scoped ERP routes
+  // (requireCompanyUser would 403 a master admin with no company). Only
+  // metrics with a real Master destination are clickable.
   const widgets: DashboardWidget[] = [
-    { title: "Companies", value: totalCompanies, href: "/settings" },
-    { title: "Total Orders", value: totalOrders, href: "/orders" },
-    { title: "Total Sales", value: totalSales, href: "/reports" },
-    { title: "Total Profit", value: totalProfit, href: "/reports" },
-    { title: "Pending Payments", value: pendingPayments, href: "/payments" },
-    { title: "Products", value: productsRes.count ?? 0, href: "/products" },
-    { title: "Marketplaces", value: marketplacesRes.count ?? 0, href: "/marketplaces" },
+    { title: "Companies", value: totalCompanies, href: "/master/companies" },
+    { title: "Total Orders", value: totalOrders },
+    { title: "Total Sales", value: totalSales },
+    { title: "Total Profit", value: totalProfit },
+    { title: "Pending Payments", value: pendingPayments },
+    { title: "Products", value: productsRes.count ?? 0, href: "/master/products" },
+    { title: "Marketplaces", value: marketplacesRes.count ?? 0 },
   ];
 
   return { ok: true, data: { widgets, role: ctx.role as UserRole } };
