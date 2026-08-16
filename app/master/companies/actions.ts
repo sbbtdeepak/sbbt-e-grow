@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/auth/session";
-import { getSiteUrl } from "@/lib/site";
+import { getInviteRedirectUrl } from "@/lib/site";
+import { findUserByEmail, mapInviteError } from "@/lib/supabase/admin-users";
 import {
   companyIdSchema,
   planIdSchema,
@@ -27,11 +29,45 @@ type CompanyWithSub = {
   company: Database["public"]["Tables"]["companies"]["Row"];
   subscription: Database["public"]["Tables"]["subscriptions"]["Row"] | null;
   plan: Plan | null;
+  hasAdmin: boolean;
+  adminEmail: string | null;
 };
 
 type ActionResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+
+/**
+ * Phone validation — permissive but sensible. Allows digits, spaces, and
+ * the common international characters (+ - ( ) . /) up to 30 characters.
+ * Empty strings normalize to null.
+ */
+const phoneSchema = z
+  .string()
+  .trim()
+  .max(30, "Phone number is too long.")
+  .regex(
+    /^[0-9+\-().\s/]*$/,
+    "Phone may only contain digits, spaces, and + - ( ) . / characters.",
+  )
+  .transform((v) => (v ? v : null));
+
+/**
+ * True when the connected database has the additive `companies.phone`
+ * column (migration 0020). Keeps inserts/updates working before the
+ * migration is applied to the connected project.
+ *
+ * Probes the column directly through PostgREST (information_schema is not
+ * exposed by the API schema cache): selecting a missing column returns an
+ * error, a present column succeeds even on an empty table.
+ */
+async function companiesPhoneColumnExists(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+): Promise<boolean> {
+  const client = supabase as unknown as SupabaseClient;
+  const { error } = await client.from("companies").select("phone").limit(1);
+  return !error;
+}
 
 const createCompanySchema = z.object({
   name: z
@@ -57,6 +93,7 @@ const createCompanySchema = z.object({
     .email("A valid admin email is required.")
     .optional()
     .or(z.literal("")),
+  phone: phoneSchema.optional().nullable(),
 });
 
 /**
@@ -91,6 +128,7 @@ export async function createCompany(input: {
   slug?: string | null;
   planId?: string | null;
   adminEmail?: string | null;
+  phone?: string | null;
 }): Promise<
   ActionResult<{
     companyId: string;
@@ -98,6 +136,7 @@ export async function createCompany(input: {
     slug: string;
     subscriptionId: string | null;
     adminInvited: boolean;
+    inviteStatus?: "sent" | "already_registered" | "rate_limited" | "failed";
     adminInviteError?: string;
   }>
 > {
@@ -115,8 +154,14 @@ export async function createCompany(input: {
   const requestedSlug = parsed.data.slug?.trim() || null;
   const planId = parsed.data.planId || null;
   const adminEmail = parsed.data.adminEmail?.trim() || null;
+  const phone = parsed.data.phone ?? null;
 
   const supabase = await createSupabaseServerClient();
+
+  // companies.phone ships via additive migration 0020. Until it is applied
+  // to the connected database, never reference the column (a missing column
+  // would fail the whole insert).
+  const phoneSupported = await companiesPhoneColumnExists(supabase);
 
   // Resolve a unique slug. An explicitly provided slug must be unique
   // (clean error otherwise); an auto-generated slug gets a numeric suffix.
@@ -155,9 +200,17 @@ export async function createCompany(input: {
 
   // Create the company. company_id comes from the server-side insert below
   // — never from client input.
+  const insertData: {
+    name: string;
+    slug: string;
+    is_active: boolean;
+    phone?: string | null;
+  } = { name, slug, is_active: true };
+  if (phoneSupported && phone) insertData.phone = phone;
+
   const { data: company, error: companyError } = await supabase
     .from("companies")
-    .insert({ name, slug, is_active: true })
+    .insert(insertData)
     .select("id, name, slug")
     .single();
 
@@ -216,39 +269,56 @@ export async function createCompany(input: {
   }
 
   // Optional company-admin invitation — separate, non-fatal operation.
+  // Never reassigns an existing auth user into the new company.
   let adminInvited = false;
   let adminInviteError: string | undefined;
+  let inviteStatus: "sent" | "already_registered" | "rate_limited" | "failed" | undefined;
   if (adminEmail) {
     const admin = await createSupabaseAdminClient();
 
-    const { data: inviteData, error: inviteError } =
-      await admin.auth.admin.inviteUserByEmail(adminEmail, {
-        data: { full_name: null, role: "company_admin" },
-        redirectTo: `${getSiteUrl()}/auth/callback`,
-      });
-
-    if (inviteError || !inviteData?.user?.id) {
-      adminInviteError = mapDbError(
-        inviteError,
-        "Company created, but the admin invitation could not be sent.",
-      );
+    // Resolve whether the email already has an auth identity. If it does,
+    // do NOT attach/reassign that user — surface it so the Master Admin
+    // can recover with a different email via the company detail page.
+    const lookup = await findUserByEmail(admin, adminEmail);
+    if (!lookup.ok) {
+      inviteStatus = "failed";
+      adminInviteError = lookup.error;
+    } else if (lookup.user) {
+      inviteStatus = "already_registered";
+      adminInviteError =
+        "This email is already registered. The company was created, but no admin invitation was sent. No user was reassigned.";
     } else {
-      // Assign the invited user's profile to the new company as its admin.
-      const { error: profileError } = await admin.from("profiles").upsert({
-        id: inviteData.user.id,
-        company_id: company.id,
-        role: "company_admin",
-        full_name: null,
-        is_active: true,
-      });
+      const { data: inviteData, error: inviteError } =
+        await admin.auth.admin.inviteUserByEmail(adminEmail, {
+          data: { full_name: null, role: "company_admin" },
+          redirectTo: getInviteRedirectUrl(),
+        });
 
-      if (profileError) {
-        adminInviteError = mapDbError(
-          profileError,
-          "Company created, but the admin profile could not be assigned.",
-        );
+      if (inviteError || !inviteData?.user?.id) {
+        const mapped = mapInviteError(inviteError);
+        inviteStatus =
+          mapped.kind === "rate_limited" ? "rate_limited" : "failed";
+        adminInviteError = mapped.message;
       } else {
-        adminInvited = true;
+        // Assign the invited user's profile to the new company as its admin.
+        const { error: profileError } = await admin.from("profiles").upsert({
+          id: inviteData.user.id,
+          company_id: company.id,
+          role: "company_admin",
+          full_name: null,
+          is_active: true,
+        });
+
+        if (profileError) {
+          inviteStatus = "failed";
+          adminInviteError = mapDbError(
+            profileError,
+            "Company created, but the admin profile could not be assigned.",
+          );
+        } else {
+          adminInvited = true;
+          inviteStatus = "sent";
+        }
       }
     }
   }
@@ -262,9 +332,118 @@ export async function createCompany(input: {
       slug: company.slug,
       subscriptionId,
       adminInvited,
+      inviteStatus,
       ...(adminInviteError ? { adminInviteError } : {}),
     },
   };
+}
+
+/**
+ * Invite (or retry inviting) a company admin for an existing company.
+ *
+ * Master Admin only. The company context is derived server-side from the
+ * company record — never from client-supplied company data. Existing auth
+ * users are NEVER reassigned into the company; an email that already has
+ * an identity returns a safe, actionable error instead.
+ *
+ * Refuses when the company already has a company_admin profile assigned
+ * (including a pending, not-yet-confirmed invite).
+ */
+export async function inviteCompanyAdmin(
+  companyId: string,
+  email: string,
+): Promise<ActionResult<{ invited: boolean; email: string }>> {
+  await requireRole("master_admin");
+
+  const parsed = z
+    .object({
+      companyId: z.string().uuid("Invalid company ID."),
+      email: z.string().trim().email("A valid email is required."),
+    })
+    .safeParse({ companyId, email });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input.",
+    };
+  }
+
+  const adminEmail = parsed.data.email.trim().toLowerCase();
+  const supabase = await createSupabaseServerClient();
+
+  // Verify the target company exists — context comes from the DB row.
+  const { data: company, error: companyError } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("id", parsed.data.companyId)
+    .maybeSingle();
+
+  if (companyError || !company) {
+    return { ok: false, error: companyError?.message ?? "Company not found." };
+  }
+
+  // Refuse when a company_admin is already assigned to this company.
+  const { data: existingAdmin } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("company_id", company.id)
+    .eq("role", "company_admin")
+    .maybeSingle();
+
+  if (existingAdmin) {
+    return {
+      ok: false,
+      error: "This company already has a company admin assigned.",
+    };
+  }
+
+  const admin = await createSupabaseAdminClient();
+
+  // Never reassign an existing auth user into this company.
+  const lookup = await findUserByEmail(admin, adminEmail);
+  if (!lookup.ok) {
+    return { ok: false, error: lookup.error };
+  }
+  if (lookup.user) {
+    return {
+      ok: false,
+      error:
+        "This email is already registered. No user was reassigned. Use an email that does not yet have an account.",
+    };
+  }
+
+  const { data: inviteData, error: inviteError } =
+    await admin.auth.admin.inviteUserByEmail(adminEmail, {
+      data: { full_name: null, role: "company_admin" },
+      redirectTo: getInviteRedirectUrl(),
+    });
+
+  if (inviteError || !inviteData?.user?.id) {
+    const mapped = mapInviteError(inviteError);
+    return { ok: false, error: mapped.message };
+  }
+
+  const { error: profileError } = await admin.from("profiles").upsert({
+    id: inviteData.user.id,
+    company_id: company.id,
+    role: "company_admin",
+    full_name: null,
+    is_active: true,
+  });
+
+  if (profileError) {
+    return {
+      ok: false,
+      error: mapDbError(
+        profileError,
+        "The invitation was sent, but the admin profile could not be assigned.",
+      ),
+    };
+  }
+
+  revalidatePath(`/master/companies/${company.id}`);
+  revalidatePath("/master/companies");
+  return { ok: true, data: { invited: true, email: adminEmail } };
 }
 
 /**
@@ -285,14 +464,22 @@ export async function getCompanies(): Promise<ActionResult<CompanyWithSub[]>> {
 
   const companyIds = (companies ?? []).map((c) => c.id);
 
+  // Deterministic selection: order by created_at DESC and take the FIRST
+  // row per company, so with multiple historical/duplicate subscription
+  // rows the list always shows the latest intended subscription.
   const { data: subscriptions } = await supabase
     .from("subscriptions")
     .select("*")
-    .in("company_id", companyIds);
+    .in("company_id", companyIds)
+    .order("created_at", { ascending: false });
 
-  const subByCompany = new Map(
-    (subscriptions ?? []).map((s) => [s.company_id, s]),
-  );
+  const subByCompany = new Map<
+    string,
+    Database["public"]["Tables"]["subscriptions"]["Row"]
+  >();
+  for (const s of subscriptions ?? []) {
+    if (!subByCompany.has(s.company_id)) subByCompany.set(s.company_id, s);
+  }
 
   const planIds = [
     ...new Set(
@@ -309,12 +496,36 @@ export async function getCompanies(): Promise<ActionResult<CompanyWithSub[]>> {
     plans = plansData ?? [];
   }
 
+  // Which companies already have a company_admin assigned, plus the admin's
+  // email (used for the list's admin column and client-side search).
+  const { data: adminProfiles } = await supabase
+    .from("profiles")
+    .select("id, company_id")
+    .eq("role", "company_admin")
+    .in("company_id", companyIds);
+  const adminCompanyIds = new Set(
+    (adminProfiles ?? []).map((p) => p.company_id),
+  );
+  const adminEmailByCompany = new Map<string, string | null>();
+  if ((adminProfiles ?? []).length > 0) {
+    const admin = await createSupabaseAdminClient();
+    await Promise.all(
+      (adminProfiles ?? []).map(async (p) => {
+        if (!p.company_id) return;
+        const { data: user } = await admin.auth.admin.getUserById(p.id);
+        adminEmailByCompany.set(p.company_id, user?.user?.email ?? null);
+      }),
+    );
+  }
+
   const planMap = new Map(plans.map((p) => [p.id, p]));
 
   const result: CompanyWithSub[] = (companies ?? []).map((company) => ({
     company,
     subscription: subByCompany.get(company.id) ?? null,
     plan: planMap.get(subByCompany.get(company.id)?.plan_id ?? "") ?? null,
+    hasAdmin: adminCompanyIds.has(company.id),
+    adminEmail: adminEmailByCompany.get(company.id) ?? null,
   }));
 
   return { ok: true, data: result };
@@ -357,6 +568,8 @@ export async function getCompanyDetail(
     staff: number;
     monthlyOrders: number;
   };
+  hasCompanyAdmin: boolean;
+  companyAdminEmail: string | null;
 }>> {
   await requireRole("master_admin");
 
@@ -428,6 +641,25 @@ export async function getCompanyDetail(
       .neq("stage", "entry"),
   ]);
 
+  // Whether the company already has a company_admin assigned (drives the
+  // "Invite Company Admin" recovery UI on the detail page). Resolve the
+  // admin's email via auth so the detail page can show it.
+  const { data: adminProfile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("company_id", company.id)
+    .eq("role", "company_admin")
+    .maybeSingle();
+
+  let companyAdminEmail: string | null = null;
+  if (adminProfile) {
+    const admin = await createSupabaseAdminClient();
+    const { data: adminUser } = await admin.auth.admin.getUserById(
+      adminProfile.id,
+    );
+    companyAdminEmail = adminUser?.user?.email ?? null;
+  }
+
   return {
     ok: true,
     data: {
@@ -441,6 +673,8 @@ export async function getCompanyDetail(
         staff: staffCount.count ?? 0,
         monthlyOrders: monthlyOrdersCount.count ?? 0,
       },
+      hasCompanyAdmin: Boolean(adminProfile),
+      companyAdminEmail,
     },
   };
 }
@@ -937,4 +1171,413 @@ export async function reactivateSubscription(
   revalidatePath(`/master/companies/${parsed.data.companyId}`);
   revalidatePath("/master/companies");
   return { ok: true, data: updated };
+}
+
+// ─── Company Information management ───────────────────────────────────────
+
+/**
+ * Update a company's business information (Master Admin only).
+ *
+ * Company identity comes from the validated companyId input; the
+ * authorization boundary is the master_admin role (server-verified). The
+ * UPDATE is scoped to exactly that row. All fields map to existing
+ * companies columns — no new schema.
+ */
+const companyUpdateSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Company name is required.")
+    .max(200, "Company name must be at most 200 characters."),
+  slug: z
+    .string()
+    .trim()
+    .regex(
+      /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+      "Slug may only contain lowercase letters, numbers, and single hyphens.",
+    )
+    .min(3, "Slug must be at least 3 characters.")
+    .max(60, "Slug is too long."),
+  legalName: z.string().trim().max(200).optional().nullable(),
+  gst: z.string().trim().max(50).optional().nullable(),
+  phone: phoneSchema.optional().nullable(),
+  address: z.string().trim().max(500).optional().nullable(),
+  city: z.string().trim().max(100).optional().nullable(),
+  state: z.string().trim().max(100).optional().nullable(),
+  pincode: z.string().trim().max(20).optional().nullable(),
+  country: z.string().trim().max(100).optional().nullable(),
+});
+
+export type CompanyUpdateInput = z.infer<typeof companyUpdateSchema>;
+
+export async function updateCompany(
+  companyId: string,
+  input: CompanyUpdateInput,
+): Promise<
+  ActionResult<Database["public"]["Tables"]["companies"]["Row"]>
+> {
+  await requireRole("master_admin");
+
+  const parsed = companyUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input.",
+    };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const updates: Database["public"]["Tables"]["companies"]["Update"] = {
+    name: parsed.data.name,
+    slug: parsed.data.slug,
+    legal_name: parsed.data.legalName ?? null,
+    gst: parsed.data.gst ?? null,
+    address: parsed.data.address ?? null,
+    city: parsed.data.city ?? null,
+    state: parsed.data.state ?? null,
+    pincode: parsed.data.pincode ?? null,
+    country: parsed.data.country ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Only touch phone when the additive migration (0020) is applied.
+  const phoneSupported = await companiesPhoneColumnExists(supabase);
+  if (phoneSupported) updates.phone = parsed.data.phone ?? null;
+
+  const { data, error } = await supabase
+    .from("companies")
+    .update(updates)
+    .eq("id", companyId)
+    .select("*")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      return {
+        ok: false,
+        error: "A company with this slug already exists. Choose a different slug.",
+      };
+    }
+    return { ok: false, error: mapDbError(error) };
+  }
+
+  revalidatePath(`/master/companies/${companyId}`);
+  revalidatePath("/master/companies");
+  return { ok: true, data };
+}
+
+/**
+ * Archive (deactivate) or reactivate a company. Master Admin only.
+ *
+ * Reversible by design — the audit found every ERP table cascades on
+ * company delete, so hard deletion is intentionally not offered. Archived
+ * companies are blocked from the ERP via requireCompanyUser().
+ */
+export async function setCompanyActive(
+  companyId: string,
+  isActive: boolean,
+): Promise<ActionResult> {
+  await requireRole("master_admin");
+
+  const parsed = z
+    .object({
+      companyId: z.string().uuid("Invalid company ID."),
+      isActive: z.boolean(),
+    })
+    .safeParse({ companyId, isActive });
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid company ID or state." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("companies")
+    .select("id, is_active")
+    .eq("id", parsed.data.companyId)
+    .maybeSingle();
+
+  if (fetchError || !existing) {
+    return { ok: false, error: fetchError?.message ?? "Company not found." };
+  }
+  if (existing.is_active === parsed.data.isActive) {
+    return { ok: true, data: undefined }; // idempotent
+  }
+
+  const { error } = await supabase
+    .from("companies")
+    .update({
+      is_active: parsed.data.isActive,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", parsed.data.companyId);
+
+  if (error) return { ok: false, error: mapDbError(error) };
+
+  revalidatePath(`/master/companies/${parsed.data.companyId}`);
+  revalidatePath("/master/companies");
+  return { ok: true, data: undefined };
+}
+
+/**
+ * Permanently delete an EMPTY company. Master Admin only.
+ *
+ * Safety contract (server-side enforced, never UI-only):
+ *  - Refuses when ANY business data exists under the company (products,
+ *    marketplaces, seller accounts, orders, order items, payments, company
+ *    settings, usage, permissions, memberships, or profiles).
+ *  - Subscriptions alone are allowed to be deleted as part of the
+ *    empty-company cleanup.
+ *  - Requires the master admin to type the company name exactly.
+ *
+ * Purchase/packing/dispatch/delivery are order stages — they are covered
+ * by the orders / order_items checks.
+ */
+const BUSINESS_TABLES = [
+  "products",
+  "marketplaces",
+  "seller_accounts",
+  "orders",
+  "order_items",
+  "payments",
+  "company_settings",
+  "company_usage",
+  "user_permissions",
+  "user_company_roles",
+  "profiles",
+] as const;
+
+export async function deleteCompany(
+  companyId: string,
+  confirmation: string,
+): Promise<ActionResult> {
+  await requireRole("master_admin");
+
+  const parsed = z
+    .object({ companyId: z.string().uuid("Invalid company ID.") })
+    .safeParse({ companyId });
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid company ID." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: company, error: companyError } = await supabase
+    .from("companies")
+    .select("id, name, is_active")
+    .eq("id", parsed.data.companyId)
+    .maybeSingle();
+
+  if (companyError || !company) {
+    return { ok: false, error: companyError?.message ?? "Company not found." };
+  }
+
+  // Strong confirmation: the exact company name must be typed.
+  if (confirmation.trim() !== company.name) {
+    return {
+      ok: false,
+      error: `Type "${company.name}" exactly to confirm permanent deletion.`,
+    };
+  }
+
+  // Refuse when any business data exists.
+  const present: string[] = [];
+  for (const table of BUSINESS_TABLES) {
+    const { count } = await supabase
+      .from(table as "products")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", company.id);
+    if (count && count > 0) present.push(table);
+  }
+
+  if (present.length > 0) {
+    return {
+      ok: false,
+      error:
+        "Company cannot be permanently deleted because it contains business data (" +
+        present.join(", ") +
+        "). Archive the company instead.",
+    };
+  }
+
+  // Empty company — safe to delete. Subscriptions cascade.
+  const { error } = await supabase
+    .from("companies")
+    .delete()
+    .eq("id", company.id);
+
+  if (error) return { ok: false, error: mapDbError(error) };
+
+  revalidatePath("/master/companies");
+  return { ok: true, data: undefined };
+}
+
+// ─── Invitation diagnostics (dry-run — never sends email) ────────────────
+
+export type InviteDiagnosticStatus =
+  | "READY_TO_INVITE"
+  | "ALREADY_REGISTERED"
+  | "ALREADY_COMPANY_ADMIN"
+  | "EXISTING_OTHER_COMPANY"
+  | "INVALID_EMAIL"
+  | "INVALID_COMPANY";
+
+export type InviteDiagnosticResult = {
+  status: InviteDiagnosticStatus;
+  companyName: string;
+  companyActive: boolean;
+  email: string;
+  /** The exact redirect URL an invitation would carry. */
+  redirectUrl: string;
+  /** Rate limits cannot be observed without actually sending. */
+  rateLimitCheckable: false;
+  details: string[];
+};
+
+/**
+ * Dry-run validation of the invitation pipeline. Master Admin only.
+ *
+ * Validates every preparable step of an admin invitation WITHOUT sending
+ * an email, creating an auth user, or touching any production data. The
+ * redirect URL is produced by the same helper used by real invitations.
+ */
+export async function inviteAdminDiagnostics(
+  companyId: string,
+  email: string,
+): Promise<ActionResult<InviteDiagnosticResult>> {
+  await requireRole("master_admin");
+
+  const trimmedEmail = email.trim().toLowerCase();
+
+  const companyCheck = z
+    .object({ companyId: z.string().uuid("Invalid company ID.") })
+    .safeParse({ companyId });
+  if (!companyCheck.success) {
+    return { ok: false, error: "Invalid company ID." };
+  }
+
+  const emailCheck = z.string().trim().email("A valid email is required.");
+  if (!emailCheck.safeParse(trimmedEmail).success) {
+    return {
+      ok: true,
+      data: {
+        status: "INVALID_EMAIL",
+        companyName: "",
+        companyActive: false,
+        email: trimmedEmail,
+        redirectUrl: getInviteRedirectUrl(),
+        rateLimitCheckable: false,
+        details: ["The email address is not valid."],
+      },
+    };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id, name, is_active")
+    .eq("id", companyId)
+    .maybeSingle();
+
+  if (!company) {
+    return {
+      ok: true,
+      data: {
+        status: "INVALID_COMPANY",
+        companyName: "",
+        companyActive: false,
+        email: trimmedEmail,
+        redirectUrl: getInviteRedirectUrl(),
+        rateLimitCheckable: false,
+        details: ["The company does not exist."],
+      },
+    };
+  }
+
+  const details: string[] = [];
+  if (!company.is_active) {
+    details.push("The company is archived. Reactivate it before inviting an admin.");
+  }
+
+  // Whether the email already has an auth identity (paginated lookup).
+  const admin = await createSupabaseAdminClient();
+  const lookup = await findUserByEmail(admin, trimmedEmail);
+  if (!lookup.ok) {
+    return { ok: false, error: lookup.error };
+  }
+
+  if (lookup.user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("company_id, role")
+      .eq("id", lookup.user.id)
+      .maybeSingle();
+
+    if (profile?.company_id && profile.company_id !== company.id) {
+      return {
+        ok: true,
+        data: {
+          status: "EXISTING_OTHER_COMPANY",
+          companyName: company.name,
+          companyActive: company.is_active,
+          email: trimmedEmail,
+          redirectUrl: getInviteRedirectUrl(),
+          rateLimitCheckable: false,
+          details: [
+            "This email already belongs to another company. Users are never moved between companies automatically.",
+          ],
+        },
+      };
+    }
+
+    if (profile?.company_id === company.id && profile.role === "company_admin") {
+      return {
+        ok: true,
+        data: {
+          status: "ALREADY_COMPANY_ADMIN",
+          companyName: company.name,
+          companyActive: company.is_active,
+          email: trimmedEmail,
+          redirectUrl: getInviteRedirectUrl(),
+          rateLimitCheckable: false,
+          details: ["This account is already the company admin for this company."],
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      data: {
+        status: "ALREADY_REGISTERED",
+        companyName: company.name,
+        companyActive: company.is_active,
+        email: trimmedEmail,
+        redirectUrl: getInviteRedirectUrl(),
+        rateLimitCheckable: false,
+        details: [
+          "This email already has an account and will not be reassigned. Use an email without an account, or an intentional account-transfer workflow.",
+        ],
+      },
+    };
+  }
+
+  details.push("No auth account exists for this email — an invitation can be sent.");
+  details.push(
+    "Email sending is subject to Supabase rate limits, which cannot be checked without actually sending.",
+  );
+
+  return {
+    ok: true,
+    data: {
+      status: "READY_TO_INVITE",
+      companyName: company.name,
+      companyActive: company.is_active,
+      email: trimmedEmail,
+      redirectUrl: getInviteRedirectUrl(),
+      rateLimitCheckable: false,
+      details,
+    },
+  };
 }

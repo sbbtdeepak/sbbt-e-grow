@@ -10,6 +10,8 @@ export type SessionContext = {
   role: UserRole;
   companyId: string | null;
   isActive: boolean;
+  /** False when the user's company is archived (is_active = false). */
+  companyActive: boolean;
   /** True only for a Supabase recovery session (password-reset flow). */
   isRecovery: boolean;
 };
@@ -65,12 +67,25 @@ export const getSessionContext = cache(
 
     if (!profile) return null;
 
+    // Company archive check — an archived company must not be usable by its
+    // users. Master admins have no company (null) and are never affected.
+    let companyActive = true;
+    if (profile.company_id) {
+      const { data: company } = await supabase
+        .from("companies")
+        .select("is_active")
+        .eq("id", profile.company_id)
+        .maybeSingle();
+      companyActive = company?.is_active ?? false;
+    }
+
     return {
       userId: user.id,
       email: user.email ?? "",
       role: profile.role,
       companyId: profile.company_id,
       isActive: profile.is_active ?? true,
+      companyActive,
       isRecovery,
     };
   },
@@ -101,6 +116,11 @@ export async function requireCompanyUser() {
   if (!ctx.companyId) {
     // Authenticated user with no company on a company-scoped page/action.
     forbidden(); // renders app/forbidden.tsx (HTTP 403)
+  }
+  if (!ctx.companyActive) {
+    // The company has been archived by a Master Admin — block ERP access
+    // the same way a deactivated account is blocked.
+    redirect("/suspended");
   }
   return { ...ctx, companyId: ctx.companyId };
 }

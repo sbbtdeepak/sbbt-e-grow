@@ -222,7 +222,48 @@ select count(*) from public.report_daily_sales;  -- only own company (security_i
 
 ---
 
-## 10. Definition of Done
+## 10. Invitation email testing (rate-limit aware)
+
+The Supabase **built-in hosted email provider has very low hourly limits**
+("Invitation limit reached. Please try again later."). Do not hammer
+`inviteUserByEmail` in production to work around this.
+
+### Mode A — Production (quota permitting)
+
+- Requires Supabase email quota (or a custom SMTP provider configured in the
+  Supabase Dashboard).
+- Send one real invitation and verify the delivered link points to:
+  `https://sbbt-e-grow.vercel.app/auth/callback`
+- Invitation preparation can be validated **without sending** via the Master
+  Admin "Check readiness" diagnostic on the company detail page (dry-run —
+  never sends an email or creates a user).
+
+### Mode B — Local Supabase + Mailpit (recommended for dev)
+
+Local Supabase captures Auth emails in **Mailpit** at `http://127.0.0.1:54324`.
+
+```bash
+supabase start          # starts local stack + Mailpit
+npm run seed            # seeds the demo company/accounts into local DB
+npm run dev             # app on http://localhost:3000 (uses .env.local)
+# trigger an invite, then open:
+open http://127.0.0.1:54324   # read the invitation email
+```
+
+The local callback is `http://localhost:3000/auth/callback` — verify the
+invitation accepts locally. Never push development auth configuration to the
+production Supabase project.
+
+### Invitation redirect assertions
+
+```bash
+node Scripts/check-invite-redirect.mjs
+node Scripts/check-invite-redirect.mjs --production   # fails unless prod origin configured
+```
+
+---
+
+## 11. Definition of Done
 
 - [ ] `npm run lint` — 0 errors
 - [ ] `npm run build` — 0 errors

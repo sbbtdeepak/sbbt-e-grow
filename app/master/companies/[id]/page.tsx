@@ -38,6 +38,8 @@ export default async function CompanyDetailPage({
           plan={detail.data.plan}
           usage={detail.data.usage}
           plans={plans.ok ? plans.data : []}
+          hasCompanyAdmin={detail.data.hasCompanyAdmin}
+          companyAdminEmail={detail.data.companyAdminEmail}
         />
       </Suspense>
     </div>

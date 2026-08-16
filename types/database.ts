@@ -55,6 +55,7 @@ export type Database = {
           state: string | null;
           pincode: string | null;
           country: string | null;
+          phone: string | null;
           timezone: string;
           currency: string;
           financial_year_start: string | null;
@@ -76,6 +77,7 @@ export type Database = {
           state?: string | null;
           pincode?: string | null;
           country?: string | null;
+          phone?: string | null;
           timezone?: string;
           currency?: string;
           financial_year_start?: string | null;
@@ -97,6 +99,7 @@ export type Database = {
           state?: string | null;
           pincode?: string | null;
           country?: string | null;
+          phone?: string | null;
           timezone?: string;
           currency?: string;
           financial_year_start?: string | null;

@@ -29,3 +29,16 @@ export function getSiteUrl(): string {
 
   return "http://localhost:3000";
 }
+
+/**
+ * Canonical invitation redirect target used by every auth invitation
+ * (staff invites, resends, company-admin invites, create-company invites).
+ *
+ * Single source of truth — never hardcode the origin or the callback path
+ * in invitation logic. Resolves through getSiteUrl(), so production emits
+ * `https://sbbt-e-grow.vercel.app/auth/callback` while local development
+ * emits `http://localhost:3000/auth/callback`.
+ */
+export function getInviteRedirectUrl(): string {
+  return `${getSiteUrl()}/auth/callback`;
+}

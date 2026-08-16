@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Plus, ArrowRight, CheckCircle2, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +47,9 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
   const [success, setSuccess] = useState<{
     companyId: string;
     name: string;
+    adminInvited: boolean;
+    adminEmailProvided: boolean;
+    inviteStatus?: "sent" | "already_registered" | "rate_limited" | "failed";
     warning?: string;
   } | null>(null);
 
@@ -69,6 +72,7 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
         slug: String(formData.get("slug") ?? ""),
         planId: planId || null,
         adminEmail: String(formData.get("adminEmail") ?? ""),
+        phone: String(formData.get("phone") ?? ""),
       });
 
       if (!result.ok) {
@@ -79,6 +83,9 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
       setSuccess({
         companyId: result.data.companyId,
         name: result.data.companyName,
+        adminInvited: result.data.adminInvited,
+        adminEmailProvided: String(formData.get("adminEmail") ?? "").trim().length > 0,
+        inviteStatus: result.data.inviteStatus,
         warning: result.data.adminInviteError,
       });
       router.refresh();
@@ -94,7 +101,7 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
       }}
     >
       <DialogTrigger asChild>
-        <Button>
+        <Button className="bg-brand text-brand-foreground shadow-sm hover:bg-brand/90">
           <Plus className="size-4" />
           Add Company
         </Button>
@@ -105,19 +112,44 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-500" />
-                Company created
+                Company created successfully
               </DialogTitle>
               <DialogDescription>
                 <span className="font-medium text-foreground">{success.name}</span>{" "}
-                is ready. Assign a plan or manage its subscription from the
-                company detail page.
+                is ready.
               </DialogDescription>
             </DialogHeader>
-            {success.warning ? (
-              <p className="text-sm text-amber-600 dark:text-amber-500" role="alert">
-                {success.warning}
-              </p>
-            ) : null}
+            <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+              <p className="text-sm font-medium">Admin invitation</p>
+              {success.adminInvited ? (
+                <p className="flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-500">
+                  <CheckCircle2 className="size-4" /> Sent
+                </p>
+              ) : success.inviteStatus === "already_registered" ? (
+                <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-500">
+                  <AlertTriangle className="size-4" /> Already registered — no
+                  user was reassigned
+                </p>
+              ) : success.inviteStatus === "rate_limited" ? (
+                <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-500">
+                  <AlertTriangle className="size-4" /> Rate limited — try again
+                  later from the company detail page
+                </p>
+              ) : success.adminEmailProvided ? (
+                <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-500">
+                  <AlertTriangle className="size-4" /> Failed — retry from the
+                  company detail page
+                </p>
+              ) : (
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  No admin email provided — invite an admin later from the
+                  company detail page.
+                </p>
+              )}
+              {!success.adminInvited && success.warning ? (
+                <p className="text-xs text-muted-foreground">{success.warning}</p>
+              ) : null}
+            </div>
             <DialogFooter className="gap-2 sm:justify-between">
               <Button
                 type="button"
@@ -207,6 +239,17 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
                 </p>
               </div>
               <div className="flex flex-col gap-2">
+                <Label htmlFor="company-phone">Phone (optional)</Label>
+                <Input
+                  id="company-phone"
+                  name="phone"
+                  type="tel"
+                  maxLength={30}
+                  placeholder="+91 98765 43210"
+                  disabled={pending}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="company-admin-email">
                   Company Admin Email (optional)
                 </Label>
@@ -237,7 +280,11 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending}>
+              <Button
+                type="submit"
+                disabled={pending}
+                className="bg-brand text-brand-foreground shadow-sm hover:bg-brand/90"
+              >
                 {pending ? "Creating…" : "Create Company"}
               </Button>
             </DialogFooter>

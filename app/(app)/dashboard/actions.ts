@@ -12,11 +12,19 @@ export type DashboardKpi = {
   trendUp?: boolean;
 };
 
+export type DashboardWidgetTone =
+  | "neutral"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger";
+
 export type DashboardWidget = {
   title: string;
   value: string | number;
   subtitle?: string;
   href?: string;
+  tone?: DashboardWidgetTone;
 };
 
 export async function getMasterDashboard() {
@@ -26,12 +34,17 @@ export async function getMasterDashboard() {
 
   const [
     companiesRes,
+    activeCompaniesRes,
     ordersRes,
     paymentsRes,
     productsRes,
     marketplacesRes,
   ] = await Promise.all([
     supabase.from("companies").select("id", { count: "exact", head: false }),
+    supabase
+      .from("companies")
+      .select("id", { count: "exact", head: false })
+      .eq("is_active", true),
     supabase
       .from("report_daily_sales")
       .select("total_orders, total_sales, total_profit")
@@ -46,6 +59,7 @@ export async function getMasterDashboard() {
   ]);
 
   const totalCompanies = companiesRes.count ?? 0;
+  const activeCompanies = activeCompaniesRes.count ?? 0;
   const totalOrders = ordersRes.data?.reduce((sum, r) => sum + (r.total_orders || 0), 0) ?? 0;
   const totalSales = ordersRes.data?.reduce((sum, r) => sum + (r.total_sales || 0), 0) ?? 0;
   const totalProfit = ordersRes.data?.reduce((sum, r) => sum + (r.total_profit || 0), 0) ?? 0;
@@ -55,13 +69,54 @@ export async function getMasterDashboard() {
   // (requireCompanyUser would 403 a master admin with no company). Only
   // metrics with a real Master destination are clickable.
   const widgets: DashboardWidget[] = [
-    { title: "Companies", value: totalCompanies, href: "/master/companies" },
-    { title: "Total Orders", value: totalOrders },
-    { title: "Total Sales", value: totalSales },
-    { title: "Total Profit", value: totalProfit },
-    { title: "Pending Payments", value: pendingPayments },
-    { title: "Products", value: productsRes.count ?? 0, href: "/master/products" },
-    { title: "Marketplaces", value: marketplacesRes.count ?? 0 },
+    {
+      title: "Companies",
+      value: totalCompanies,
+      subtitle: `${activeCompanies} active`,
+      href: "/master/companies",
+      tone: "info",
+    },
+    {
+      title: "Total Orders",
+      value: totalOrders,
+      subtitle: "Last 7 days",
+      tone: "neutral",
+    },
+    {
+      title: "Total Sales",
+      value: totalSales.toLocaleString("en-IN", {
+        maximumFractionDigits: 0,
+      }),
+      subtitle: "Last 7 days",
+      tone: "neutral",
+    },
+    {
+      title: "Total Profit",
+      value: totalProfit.toLocaleString("en-IN", {
+        maximumFractionDigits: 0,
+      }),
+      subtitle: "Last 7 days",
+      tone: totalProfit >= 0 ? "success" : "danger",
+    },
+    {
+      title: "Pending Payments",
+      value: pendingPayments,
+      subtitle: "Expected settlements",
+      tone: "warning",
+    },
+    {
+      title: "Products",
+      value: productsRes.count ?? 0,
+      subtitle: "Platform-wide",
+      href: "/master/products",
+      tone: "info",
+    },
+    {
+      title: "Marketplaces",
+      value: marketplacesRes.count ?? 0,
+      subtitle: "Platform-wide",
+      tone: "neutral",
+    },
   ];
 
   return { ok: true, data: { widgets, role: ctx.role as UserRole } };

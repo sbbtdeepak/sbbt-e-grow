@@ -7,7 +7,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCompanyUser } from "@/lib/auth/session";
 import { assertWithinLimit, EntitlementError } from "@/lib/saas/entitlements";
 import { mapDbError } from "@/lib/saas/db-errors";
-import { getSiteUrl } from "@/lib/site";
+import { getInviteRedirectUrl } from "@/lib/site";
+import { findUserByEmail } from "@/lib/supabase/admin-users";
 import {
   MODULE_PERMISSIONS,
   DEFAULT_STAFF_PERMISSIONS,
@@ -33,46 +34,6 @@ type StaffActionResult =
 
 function isCompanyAdmin(role: string): boolean {
   return role === "company_admin";
-}
-
-type AuthUserLookup =
-  | { ok: true; user: { id: string; email: string } | null }
-  | { ok: false; error: string };
-
-/**
- * Find an auth user by email via paginated admin lookup.
- *
- * `admin.auth.admin.listUsers()` returns only the first page
- * (default 50 users), so a direct call misses users beyond page 1
- * and can produce false "user not found" results or duplicate
- * invites. This walks pages of up to 1000 users until the email
- * matches or the list is exhausted. Emails are unique in Supabase
- * Auth, so the first match is authoritative.
- */
-async function findUserByEmail(
-  admin: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
-  email: string,
-): Promise<AuthUserLookup> {
-  const target = email.trim().toLowerCase();
-  const perPage = 1000;
-  let page = 1;
-
-  for (;;) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) {
-      return { ok: false, error: mapDbError(error, "Unable to look up users.") };
-    }
-
-    const users = data?.users ?? [];
-    const match = users.find((u) => u.email?.toLowerCase() === target);
-    if (match) {
-      return { ok: true, user: { id: match.id, email: match.email ?? "" } };
-    }
-    if (users.length < perPage) {
-      return { ok: true, user: null };
-    }
-    page += 1;
-  }
 }
 
 /**
@@ -224,7 +185,7 @@ export async function inviteStaff(
     const { data: inviteData, error: inviteError } =
       await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
         data: { full_name: fullName ?? null, role: "staff" },
-        redirectTo: `${getSiteUrl()}/auth/callback`,
+        redirectTo: getInviteRedirectUrl(),
       });
 
     if (inviteError) {
@@ -499,12 +460,12 @@ export async function resendInvite(email: string): Promise<StaffActionResult> {
     return { ok: false, error: "This user is not a member of your company." };
   }
 
-  // Re-send invite with the same redirect URL (getSiteUrl() keeps the
-  // origin consistent with inviteStaff — never a raw env read that could
-  // produce "undefined/auth/callback" or a localhost fallback).
+  // Re-send invite with the same redirect URL (getInviteRedirectUrl()
+  // keeps the origin consistent with inviteStaff — never a raw env read
+  // that could produce "undefined/auth/callback" or a localhost fallback).
   const { error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
     data: { role: "staff" },
-    redirectTo: `${getSiteUrl()}/auth/callback`,
+    redirectTo: getInviteRedirectUrl(),
   });
 
   if (error) return { ok: false, error: mapDbError(error, "Unable to resend the invitation.") };
