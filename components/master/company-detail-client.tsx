@@ -51,6 +51,7 @@ import {
   reactivateSubscription,
   inviteCompanyAdmin,
   inviteAdminDiagnostics,
+  resendCompanyAdminInvite,
   setCompanyActive,
   deleteCompany,
 } from "@/app/master/companies/actions";
@@ -79,6 +80,10 @@ type CompanyDetailClientProps = {
   plans: Plan[];
   hasCompanyAdmin: boolean;
   companyAdminEmail: string | null;
+  /** Application User ID of the company admin (e.g. acme.admin). */
+  companyAdminUsername: string | null;
+  /** Auth-derived: "none" | "pending" | "confirmed" (not profiles.is_active). */
+  adminState: "none" | "pending" | "confirmed";
 };
 
 const SUB_STATUS_PILL: Record<string, string> = {
@@ -131,8 +136,9 @@ export function CompanyDetailClient({
   plan,
   usage,
   plans,
-  hasCompanyAdmin,
   companyAdminEmail,
+  companyAdminUsername,
+  adminState,
 }: CompanyDetailClientProps) {
   const router = useRouter();
 
@@ -152,6 +158,7 @@ export function CompanyDetailClient({
   const [adminEmail, setAdminEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [resending, setResending] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminSuccess, setAdminSuccess] = useState<string | null>(null);
   const [diag, setDiag] = useState<InviteDiagnosticResult | null>(null);
@@ -310,6 +317,21 @@ export function CompanyDetailClient({
     setInviting(false);
   };
 
+  const handleResendAdmin = async () => {
+    setResending(true);
+    setAdminError(null);
+    setAdminSuccess(null);
+    const result = await resendCompanyAdminInvite(company.id);
+    if (!result.ok) setAdminError(result.error);
+    else {
+      setAdminSuccess(
+        "Invitation resent. The company admin will receive a new email.",
+      );
+      router.refresh();
+    }
+    setResending(false);
+  };
+
   const handleCheckReadiness = async () => {
     if (!adminEmail.trim()) return;
     setChecking(true);
@@ -360,7 +382,7 @@ export function CompanyDetailClient({
     usage.sellerAccounts > 0 ||
     usage.monthlyOrders > 0 ||
     usage.staff > 0 ||
-    hasCompanyAdmin;
+    adminState !== "none";
 
   const initials = company.name
     .split(/\s+/)
@@ -710,18 +732,65 @@ export function CompanyDetailClient({
           </div>
         </div>
 
-        {hasCompanyAdmin ? (
+        {adminState === "confirmed" ? (
           <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl border border-emerald-200/70 bg-emerald-50/50 p-4 dark:border-emerald-400/20 dark:bg-emerald-950/30">
             <span className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
               <CheckCircle2 className="size-5" />
             </span>
             <div>
               <p className="text-sm font-medium">Company Admin assigned</p>
+              <p className="font-mono text-sm text-foreground">
+                {companyAdminUsername ?? "—"}
+              </p>
               <p className="text-sm text-muted-foreground">
                 {companyAdminEmail ?? "Admin account"}
               </p>
             </div>
             <span className="status-pill status-pill-success">Active</span>
+          </div>
+        ) : adminState === "pending" ? (
+          <div className="mt-4 space-y-4">
+            <div className="flex flex-wrap items-center gap-4 rounded-xl border border-amber-200/70 bg-amber-50/50 p-4 dark:border-amber-400/20 dark:bg-amber-950/30">
+              <span className="flex size-9 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                <AlertTriangle className="size-5" />
+              </span>
+              <div>
+                <p className="text-sm font-medium">Invitation pending</p>
+                <p className="font-mono text-sm text-foreground">
+                  {companyAdminUsername ?? "—"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {companyAdminEmail ?? "The invited admin"} has not accepted
+                  the invitation yet.
+                </p>
+              </div>
+              <span className="status-pill status-pill-warning">Pending</span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={handleResendAdmin}
+                disabled={resending}
+                className="gap-1.5 sm:self-start"
+              >
+                <RefreshCcw className="size-4" />
+                {resending ? "Sending…" : "Resend invitation"}
+              </Button>
+            </div>
+
+            {adminError ? (
+              <p className="text-sm text-destructive" role="alert">
+                {adminError}
+              </p>
+            ) : null}
+            {adminSuccess ? (
+              <p
+                className="text-sm text-emerald-600 dark:text-emerald-500"
+                role="status"
+              >
+                {adminSuccess}
+              </p>
+            ) : null}
           </div>
         ) : (
           <div className="mt-4 space-y-4">

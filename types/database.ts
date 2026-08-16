@@ -118,6 +118,7 @@ export type Database = {
           full_name: string | null;
           role: UserRole;
           is_active: boolean;
+          username: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -127,6 +128,7 @@ export type Database = {
           full_name?: string | null;
           role?: UserRole;
           is_active?: boolean;
+          username?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -136,6 +138,7 @@ export type Database = {
           full_name?: string | null;
           role?: UserRole;
           is_active?: boolean;
+          username?: string | null;
           created_at?: string;
           updated_at?: string;
         };

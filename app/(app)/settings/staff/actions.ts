@@ -8,7 +8,12 @@ import { requireCompanyUser } from "@/lib/auth/session";
 import { assertWithinLimit, EntitlementError } from "@/lib/saas/entitlements";
 import { mapDbError } from "@/lib/saas/db-errors";
 import { getInviteRedirectUrl } from "@/lib/site";
-import { findUserByEmail } from "@/lib/supabase/admin-users";
+import {
+  findUserByEmail,
+  fetchAssignedUsernames,
+} from "@/lib/supabase/admin-users";
+import { inviteUserData } from "@/lib/auth/invite-state";
+import { generateUsername } from "@/lib/auth/usernames";
 import {
   MODULE_PERMISSIONS,
   DEFAULT_STAFF_PERMISSIONS,
@@ -18,6 +23,8 @@ export type StaffMember = {
   id: string;
   email: string;
   fullName: string | null;
+  /** Application User ID, e.g. acme.staff1 (null for legacy accounts). */
+  username: string | null;
   role: string;
   isActive: boolean;
   invitationStatus: "invited" | "pending" | "active";
@@ -72,7 +79,7 @@ export async function listStaff(): Promise<StaffListResult> {
   // Fetch staff profiles in the company.
   const { data: profiles, error: profileErr } = await supabase
     .from("profiles")
-    .select("id, full_name, role, is_active")
+    .select("id, full_name, role, is_active, username")
     .eq("company_id", ctx.companyId)
     .eq("role", "staff")
     .order("created_at", { ascending: false });
@@ -120,6 +127,7 @@ export async function listStaff(): Promise<StaffListResult> {
       id: p.id,
       email,
       fullName: p.full_name,
+      username: p.username ?? null,
       role: p.role,
       isActive: p.is_active,
       invitationStatus: invitationStatus === "invited" && p.is_active ? "active" : invitationStatus,
@@ -184,7 +192,7 @@ export async function inviteStaff(
     // New user — send invitation email via Supabase Auth.
     const { data: inviteData, error: inviteError } =
       await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
-        data: { full_name: fullName ?? null, role: "staff" },
+        data: { full_name: fullName ?? null, ...inviteUserData("staff") },
         redirectTo: getInviteRedirectUrl(),
       });
 
@@ -214,6 +222,20 @@ export async function inviteStaff(
     }
   }
 
+  // Generate the staff User ID server-side from the company slug — never
+  // accepted from the client. Existing usernames are never reused.
+  const { data: company } = await admin
+    .from("companies")
+    .select("slug")
+    .eq("id", ctx.companyId)
+    .maybeSingle();
+  const existingUsernames = await fetchAssignedUsernames(admin);
+  const username = generateUsername(
+    company?.slug ?? "company",
+    "staff",
+    existingUsernames,
+  );
+
   // Create or update the profile.
   const { error: profileError } = await admin.from("profiles").upsert({
     id: userId,
@@ -221,6 +243,7 @@ export async function inviteStaff(
     role: "staff",
     full_name: fullName ?? null,
     is_active: true,
+    username,
   });
 
   if (profileError) {
@@ -464,7 +487,7 @@ export async function resendInvite(email: string): Promise<StaffActionResult> {
   // keeps the origin consistent with inviteStaff — never a raw env read
   // that could produce "undefined/auth/callback" or a localhost fallback).
   const { error } = await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
-    data: { role: "staff" },
+    data: inviteUserData("staff"),
     redirectTo: getInviteRedirectUrl(),
   });
 

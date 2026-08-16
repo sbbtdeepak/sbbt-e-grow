@@ -3,6 +3,7 @@ import { getUserPermissions } from "@/lib/auth/permissions.server";
 import { TopNavbar } from "@/components/layout/top-navbar";
 import { Sidebar } from "@/components/layout/sidebar";
 import { StaffMobileChrome } from "@/components/staff/staff-mobile-chrome";
+import { redirect } from "next/navigation";
 
 /**
  * Layout for the authenticated app shell.
@@ -24,6 +25,14 @@ import { StaffMobileChrome } from "@/components/staff/staff-mobile-chrome";
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const ctx = await requireUser();
   const isStaff = ctx.role === "staff";
+
+  // Sticky "set your password" gate for accounts created via invitation:
+  // the invite code exchange authenticates the user before any password
+  // exists, so the ERP shell stays locked behind the /set-password step
+  // until a password is actually created (flag cleared server-side).
+  if (ctx.pendingPasswordSet) {
+    redirect("/set-password");
+  }
 
   let perms: Record<string, boolean> = {};
   if (isStaff) {

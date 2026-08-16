@@ -219,6 +219,11 @@ function StaffRow({ member, onActivate, onDeactivate, onRemove, onPermissionChan
               <Badge variant="outline">Invitation pending</Badge>
             )}
           </div>
+          {member.username ? (
+            <p className="font-mono text-sm text-foreground">
+              {member.username}
+            </p>
+          ) : null}
           <p className="text-sm text-muted-foreground">{member.email}</p>
         </div>
 

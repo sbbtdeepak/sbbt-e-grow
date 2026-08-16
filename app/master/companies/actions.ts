@@ -8,7 +8,17 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/auth/session";
 import { getInviteRedirectUrl } from "@/lib/site";
-import { findUserByEmail, mapInviteError } from "@/lib/supabase/admin-users";
+import {
+  findUserByEmail,
+  mapInviteError,
+  fetchAssignedUsernames,
+} from "@/lib/supabase/admin-users";
+import {
+  inviteUserData,
+  resolveCompanyAdminState,
+  type CompanyAdminState,
+} from "@/lib/auth/invite-state";
+import { generateUsername } from "@/lib/auth/usernames";
 import {
   companyIdSchema,
   planIdSchema,
@@ -290,7 +300,7 @@ export async function createCompany(input: {
     } else {
       const { data: inviteData, error: inviteError } =
         await admin.auth.admin.inviteUserByEmail(adminEmail, {
-          data: { full_name: null, role: "company_admin" },
+          data: { full_name: null, ...inviteUserData("company_admin") },
           redirectTo: getInviteRedirectUrl(),
         });
 
@@ -301,12 +311,20 @@ export async function createCompany(input: {
         adminInviteError = mapped.message;
       } else {
         // Assign the invited user's profile to the new company as its admin.
+        // User ID is generated server-side from the company slug — never
+        // accepted from the client.
+        const existingUsernames = await fetchAssignedUsernames(admin);
         const { error: profileError } = await admin.from("profiles").upsert({
           id: inviteData.user.id,
           company_id: company.id,
           role: "company_admin",
           full_name: null,
           is_active: true,
+          username: generateUsername(
+            company.slug,
+            "company_admin",
+            existingUsernames,
+          ),
         });
 
         if (profileError) {
@@ -374,7 +392,7 @@ export async function inviteCompanyAdmin(
   // Verify the target company exists — context comes from the DB row.
   const { data: company, error: companyError } = await supabase
     .from("companies")
-    .select("id")
+    .select("id, slug")
     .eq("id", parsed.data.companyId)
     .maybeSingle();
 
@@ -414,7 +432,7 @@ export async function inviteCompanyAdmin(
 
   const { data: inviteData, error: inviteError } =
     await admin.auth.admin.inviteUserByEmail(adminEmail, {
-      data: { full_name: null, role: "company_admin" },
+      data: { full_name: null, ...inviteUserData("company_admin") },
       redirectTo: getInviteRedirectUrl(),
     });
 
@@ -423,12 +441,20 @@ export async function inviteCompanyAdmin(
     return { ok: false, error: mapped.message };
   }
 
+  // User ID is generated server-side from the company slug — never
+  // accepted from the client.
+  const existingUsernames = await fetchAssignedUsernames(admin);
   const { error: profileError } = await admin.from("profiles").upsert({
     id: inviteData.user.id,
     company_id: company.id,
     role: "company_admin",
     full_name: null,
     is_active: true,
+    username: generateUsername(
+      company.slug,
+      "company_admin",
+      existingUsernames,
+    ),
   });
 
   if (profileError) {
@@ -444,6 +470,91 @@ export async function inviteCompanyAdmin(
   revalidatePath(`/master/companies/${company.id}`);
   revalidatePath("/master/companies");
   return { ok: true, data: { invited: true, email: adminEmail } };
+}
+
+/**
+ * Resend the pending company-admin invitation for a company.
+ *
+ * Master Admin only. All context (company, existing admin profile, auth
+ * user) is derived server-side — never from client-supplied data. Only a
+ * genuinely pending invitation (invited_at set, confirmed_at null) can be
+ * resent, and only to the same email. Confirmed admins are refused; no
+ * user is ever moved between companies or reassigned.
+ */
+export async function resendCompanyAdminInvite(
+  companyId: string,
+): Promise<ActionResult<{ email: string }>> {
+  await requireRole("master_admin");
+
+  const parsed = companyIdSchema.safeParse({ companyId });
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid company ID." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id, is_active")
+    .eq("id", parsed.data.companyId)
+    .maybeSingle();
+
+  if (!company) {
+    return { ok: false, error: "Company not found." };
+  }
+  if (!company.is_active) {
+    return {
+      ok: false,
+      error: "This company is archived. Reactivate it before inviting an admin.",
+    };
+  }
+
+  const { data: adminProfile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("company_id", company.id)
+    .eq("role", "company_admin")
+    .maybeSingle();
+
+  if (!adminProfile) {
+    return {
+      ok: false,
+      error: "No company admin is assigned to this company. Invite one first.",
+    };
+  }
+
+  const admin = await createSupabaseAdminClient();
+  const { data: authUser } = await admin.auth.admin.getUserById(
+    adminProfile.id,
+  );
+  const user = authUser?.user ?? null;
+
+  if (!user?.email) {
+    return { ok: false, error: "Unable to resolve the company admin account." };
+  }
+
+  // Only resend while the invitation is genuinely pending/unconfirmed.
+  if (resolveCompanyAdminState(user) !== "pending") {
+    return {
+      ok: false,
+      error:
+        "The company admin is already confirmed and active. A resend is not needed.",
+    };
+  }
+
+  const { error } = await admin.auth.admin.inviteUserByEmail(user.email, {
+    data: { full_name: null, ...inviteUserData("company_admin") },
+    redirectTo: getInviteRedirectUrl(),
+  });
+
+  if (error) {
+    const mapped = mapInviteError(error);
+    return { ok: false, error: mapped.message };
+  }
+
+  revalidatePath(`/master/companies/${company.id}`);
+  revalidatePath("/master/companies");
+  return { ok: true, data: { email: user.email } };
 }
 
 /**
@@ -570,6 +681,10 @@ export async function getCompanyDetail(
   };
   hasCompanyAdmin: boolean;
   companyAdminEmail: string | null;
+  /** Application User ID of the company admin (e.g. acme.admin). */
+  companyAdminUsername: string | null;
+  /** Auth-derived: "none" | "pending" | "confirmed" (never profiles.is_active). */
+  adminState: CompanyAdminState;
 }>> {
   await requireRole("master_admin");
 
@@ -646,18 +761,25 @@ export async function getCompanyDetail(
   // admin's email via auth so the detail page can show it.
   const { data: adminProfile } = await supabase
     .from("profiles")
-    .select("id")
+    .select("id, username")
     .eq("company_id", company.id)
     .eq("role", "company_admin")
     .maybeSingle();
 
   let companyAdminEmail: string | null = null;
+  let companyAdminUsername: string | null = null;
+  let adminState: CompanyAdminState = "none";
   if (adminProfile) {
     const admin = await createSupabaseAdminClient();
     const { data: adminUser } = await admin.auth.admin.getUserById(
       adminProfile.id,
     );
-    companyAdminEmail = adminUser?.user?.email ?? null;
+    const authUser = adminUser?.user ?? null;
+    companyAdminEmail = authUser?.email ?? null;
+    companyAdminUsername = adminProfile.username ?? null;
+    // Pending vs confirmed comes from the real Auth invitation state
+    // (invited_at / confirmed_at), not from profiles.is_active.
+    adminState = resolveCompanyAdminState(authUser);
   }
 
   return {
@@ -675,6 +797,8 @@ export async function getCompanyDetail(
       },
       hasCompanyAdmin: Boolean(adminProfile),
       companyAdminEmail,
+      companyAdminUsername,
+      adminState,
     },
   };
 }

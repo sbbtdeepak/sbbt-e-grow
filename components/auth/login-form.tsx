@@ -13,19 +13,23 @@ export function LoginForm() {
   return (
     <form action={action} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="identifier">User ID</Label>
         <Input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          placeholder="you@company.com"
+          id="identifier"
+          name="identifier"
+          type="text"
+          autoComplete="username"
+          placeholder="e.g. ankit.admin"
           defaultValue=""
-          aria-invalid={Boolean(state?.errors?.email)}
+          aria-invalid={Boolean(state?.errors?.identifier)}
         />
-        {state?.errors?.email ? (
-          <p className="text-sm text-destructive">{state.errors.email[0]}</p>
+        {state?.errors?.identifier ? (
+          <p className="text-sm text-destructive">{state.errors.identifier[0]}</p>
         ) : null}
+        <p className="text-xs text-muted-foreground">
+          Your User ID is assigned automatically by your company. You can also
+          sign in with your registered email.
+        </p>
       </div>
 
       <div className="flex flex-col gap-2">

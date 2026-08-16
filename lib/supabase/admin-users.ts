@@ -45,6 +45,22 @@ export async function findUserByEmail(
   }
 }
 
+/**
+ * Every username currently assigned in the platform (global, unique).
+ * Drives collision-safe User ID generation — the generator never reuses
+ * one. Master admin (username NULL) is naturally excluded. Uses the admin
+ * client so it works regardless of the caller's RLS role.
+ */
+export async function fetchAssignedUsernames(
+  admin: AdminClient,
+): Promise<string[]> {
+  const { data } = await admin
+    .from("profiles")
+    .select("username")
+    .not("username", "is", null);
+  return (data ?? []).map((p) => p.username as string);
+}
+
 export type InviteErrorKind = "already_registered" | "rate_limited" | "generic";
 
 /**

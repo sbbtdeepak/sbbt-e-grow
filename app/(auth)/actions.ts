@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/auth/session";
 import { getSiteUrl } from "@/lib/site";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -14,20 +15,29 @@ import {
   type LoginState,
   type ResetPasswordState,
 } from "@/lib/validations/auth";
+import { clearPendingPasswordMeta } from "@/lib/auth/invite-state";
+import { isEmailIdentifier } from "@/lib/auth/usernames";
 
 /**
- * Sign in a user with email + password via Supabase Auth.
+ * Sign in a user with User ID (or email) + password via Supabase Auth.
  *
- * Returns a `LoginState` with field errors on validation failure,
- * or a generic message on auth failure. Redirects to `/dashboard`
- * on success.
+ * Resolver:
+ *  - identifiers containing "@" are treated as the Auth email (master
+ *    admin and legacy accounts), passed straight to Supabase;
+ *  - anything else is a User ID: profile lookup by username → resolve the
+ *    associated Auth email via the admin client → sign in with it.
+ *
+ * Anti-enumeration: an unknown User ID falls through to a failing
+ * signInWithPassword attempt with the same identifier, so both timing and
+ * the returned message are identical to a wrong password. No user-facing
+ * message ever reveals whether an identifier exists.
  */
 export async function signInAction(
   _prevState: LoginState | undefined,
   formData: FormData,
 ): Promise<LoginState> {
   const validated = loginSchema.safeParse({
-    email: formData.get("email"),
+    identifier: formData.get("identifier"),
     password: formData.get("password"),
   });
 
@@ -38,16 +48,47 @@ export async function signInAction(
     };
   }
 
+  const identifier = validated.data.identifier;
+  const password = validated.data.password;
+
   const supabase = await createSupabaseServerClient();
 
+  // User ID path: username → profile → Auth email. Usernames never
+  // contain "@", so the email path is unambiguous. The lookup MUST use
+  // the admin client: profiles RLS only exposes own/master/same-company
+  // rows, so the anonymous SSR client could never read another user's
+  // username row (verified live — this is why a User ID login failed).
+  // The admin client is used exactly like findUserByEmail/listStaff and
+  // never returns anything to the browser.
+  let email = identifier;
+  if (!isEmailIdentifier(identifier)) {
+    const admin = await createSupabaseAdminClient();
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("username", identifier)
+      .maybeSingle();
+
+    if (profile) {
+      const { data: authUser } = await admin.auth.admin.getUserById(
+        profile.id,
+      );
+      if (authUser?.user?.email) email = authUser.user.email;
+    }
+    // When no profile/email resolves, `email` stays the raw identifier and
+    // the sign-in attempt below fails with the same generic message — no
+    // username enumeration, uniform timing.
+  }
+
   const { error } = await supabase.auth.signInWithPassword({
-    email: validated.data.email,
-    password: validated.data.password,
+    email,
+    password,
   });
 
   if (error) {
-    // Generic message — never leak Supabase auth internals to visitors.
-    return { message: "Unable to sign in. Please check your email and password." };
+    // Generic message — never leak Supabase auth internals to visitors and
+    // never reveal whether the User ID / email exists.
+    return { message: "Unable to sign in. Please check your User ID and password." };
   }
 
   revalidatePath("/", "layout");
@@ -152,4 +193,69 @@ export async function updatePasswordAction(
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
   redirect("/login?reset=success");
+}
+
+/**
+ * Create the first password for an invited user who just accepted their
+ * invitation.
+ *
+ * The invite code exchange establishes a normal authenticated session
+ * BEFORE any password exists. This action:
+ * - requires an authenticated session whose durable pending-password gate
+ *   is armed (set at invite time, cleared here on success) — never a
+ *   recovery session, which belongs to the reset-password flow;
+ * - validates with the same password rules as the reset flow;
+ * - sets the password via Supabase Auth `updateUser` (user-scoped session,
+ *   never service-role, never written to our database);
+ * - clears the gate and sends the user to /dashboard so the existing
+ *   onboarding logic continues.
+ */
+export async function setPasswordAction(
+  _prevState: ResetPasswordState | undefined,
+  formData: FormData,
+): Promise<ResetPasswordState> {
+  const ctx = await getSessionContext();
+  if (!ctx) {
+    redirect("/login");
+  }
+  // Recovery sessions belong to /reset-password — never accept a password
+  // here for them (defense in depth; the page also redirects).
+  if (ctx.isRecovery) {
+    redirect("/reset-password");
+  }
+  if (!ctx.pendingPasswordSet) {
+    return {
+      message:
+        "This invitation link is no longer valid. Please contact your administrator for a new invitation.",
+    };
+  }
+
+  const validated = resetPasswordSchema.safeParse({
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+
+  if (!validated.success) {
+    return {
+      errors: validated.error.flatten().fieldErrors,
+      message: "Please fix the errors below.",
+    };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase.auth.updateUser({
+    password: validated.data.password,
+    data: clearPendingPasswordMeta(),
+  });
+
+  if (error) {
+    // Generic — never leak Supabase auth internals.
+    return {
+      message: "Unable to set your password. Please try again.",
+    };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
 }

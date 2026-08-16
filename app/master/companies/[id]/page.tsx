@@ -40,6 +40,8 @@ export default async function CompanyDetailPage({
           plans={plans.ok ? plans.data : []}
           hasCompanyAdmin={detail.data.hasCompanyAdmin}
           companyAdminEmail={detail.data.companyAdminEmail}
+          companyAdminUsername={detail.data.companyAdminUsername}
+          adminState={detail.data.adminState}
         />
       </Suspense>
     </div>

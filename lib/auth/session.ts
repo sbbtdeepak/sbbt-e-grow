@@ -2,6 +2,7 @@ import { cache } from "react";
 import { forbidden, redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { INVITE_PENDING_META_KEY } from "@/lib/auth/invite-state";
 import type { UserRole } from "@/types/database";
 
 export type SessionContext = {
@@ -9,11 +10,19 @@ export type SessionContext = {
   email: string;
   role: UserRole;
   companyId: string | null;
+  /** Application User ID (e.g. acme.admin) or null (master, legacy). */
+  username: string | null;
   isActive: boolean;
   /** False when the user's company is archived (is_active = false). */
   companyActive: boolean;
   /** True only for a Supabase recovery session (password-reset flow). */
   isRecovery: boolean;
+  /**
+   * True while the durable "set your password" gate is armed for this
+   * account (invitation sent, password not yet created). Cleared the moment
+   * the password is set — survives re-clicks, other browsers, refreshes.
+   */
+  pendingPasswordSet: boolean;
 };
 
 /**
@@ -61,7 +70,7 @@ export const getSessionContext = cache(
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, company_id, role, is_active")
+      .select("id, company_id, role, is_active, username")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -84,9 +93,11 @@ export const getSessionContext = cache(
       email: user.email ?? "",
       role: profile.role,
       companyId: profile.company_id,
+      username: profile.username ?? null,
       isActive: profile.is_active ?? true,
       companyActive,
       isRecovery,
+      pendingPasswordSet: user.user_metadata?.[INVITE_PENDING_META_KEY] === true,
     };
   },
 );

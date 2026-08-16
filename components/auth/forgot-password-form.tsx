@@ -17,7 +17,7 @@ export function ForgotPasswordForm() {
   return (
     <form action={action} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">Registered email</Label>
         <Input
           id="email"
           name="email"
@@ -27,6 +27,9 @@ export function ForgotPasswordForm() {
           defaultValue=""
           disabled={pending}
         />
+        <p className="text-xs text-muted-foreground">
+          Password recovery uses your registered email — not your User ID.
+        </p>
       </div>
 
       {state?.message ? (

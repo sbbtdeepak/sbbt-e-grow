@@ -259,6 +259,78 @@ production Supabase project.
 ```bash
 node Scripts/check-invite-redirect.mjs
 node Scripts/check-invite-redirect.mjs --production   # fails unless prod origin configured
+node Scripts/check-lifecycle.mjs                       # invitation state machine
+node Scripts/check-usernames.mjs                       # User ID generation
+```
+
+## 10C. User ID identity + login (Phase 24.6)
+
+Company users get a generated application User ID (`profiles.username`):
+
+- company admin → `{company-slug}.admin`
+- staff → `{company-slug}.staff1`, `.staff2`, … (never reused — deactivated
+  staff keep their User ID reserved)
+- Master Admin has **no** User ID and logs in with email + password.
+- Usernames are globally unique (DB unique index), generated server-side
+  only, never accepted from the browser, never changeable by the user.
+
+Login (`/login`) accepts **User ID or registered email** + password:
+
+- identifier contains `@` → Supabase email sign-in (master / legacy)
+- otherwise → `profiles.username` lookup → Auth email → sign-in
+- unknown User IDs and wrong passwords return the same generic message
+  (no username enumeration; identical response for both paths)
+
+Password recovery remains email-based (`/forgot-password` uses the
+registered email, not the User ID). The `/set-password` screen shows the
+automatically assigned User ID (read from the server-side profile, never
+query params).
+
+Existing users were backfilled by migration 0021 (SBBT Demo:
+`sbbt-demo.admin`, `sbbt-demo.staff1`; master untouched). Manual test:
+
+```bash
+# 1. Master → invite company admin for a new company → email shows generated
+#    User ID after acceptance on /set-password (e.g. acme.admin)
+# 2. /login with the User ID + created password → dashboard
+# 3. /login with the email + password also works (both identifiers)
+# 4. Staff list shows Name / User ID / Role / Email / Status / Permissions
+```
+
+## 10B. Company-admin invitation lifecycle (Phase 24.5)
+
+Full lifecycle: Master creates company → admin invitation email → production
+callback (`https://sbbt-e-grow.vercel.app/auth/callback`) → mandatory
+`/set-password` step → `/dashboard` → onboarding → normal email+password login.
+
+Key behavior:
+
+- The invite code exchange authenticates the user BEFORE any password exists
+  (Supabase GoTrue semantics). A durable `__pending_invite` flag is set in
+  `user_metadata` at invite time and cleared the moment the password is
+  created, so the `/set-password` gate survives tab closure, re-clicks in
+  other browsers, and session refreshes.
+- `/auth/callback` routes invitation acceptances (no `?next=`) to
+  `/set-password`; recovery links (`?next=/reset-password`) keep the existing
+  flow. Expired/invalid invitations show a clear message on `/login`.
+- The Company Admin card distinguishes **No admin** / **Invitation pending**
+  (amber, with **Resend invitation**) / **Active** (confirmed) using real Auth
+  state (`invited_at` / `confirmed_at`), never `profiles.is_active`.
+- Resend is master-only, same-email-only, and refused for confirmed admins;
+  existing users are never reassigned between companies.
+- Passwords are set via user-scoped `supabase.auth.updateUser` — never
+  service-role, never stored in the app database, never visible to Master.
+
+Manual test (requires a real mailbox; Supabase hosted email has tight rate
+limits — do not spam invites):
+
+```bash
+# 1. Master → /master/companies → + Add Company → enter a brand-new admin email
+# 2. Email link must point to https://sbbt-e-grow.vercel.app/auth/callback
+# 3. Accept → /set-password → create password → /dashboard → onboarding
+# 4. Log out → /login → email + password → dashboard
+# 5. Master detail page: pending admin shows "Invitation pending" + Resend
+#    (before acceptance), "Active" (after acceptance/confirmation)
 ```
 
 ---
