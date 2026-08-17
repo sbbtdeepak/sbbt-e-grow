@@ -167,10 +167,17 @@ export function ProductsClient({
 }) {
   const router = useRouter();
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all");
+  const [search, setSearch] = useState("");
 
+  const query = search.trim().toLowerCase();
   const visible = products.filter((p) => {
-    if (filter === "all") return true;
-    return p.status === filter;
+    if (filter !== "all" && p.status !== filter) return false;
+    if (!query) return true;
+    return (
+      p.name.toLowerCase().includes(query) ||
+      p.sku.toLowerCase().includes(query) ||
+      (p.category ?? "").toLowerCase().includes(query)
+    );
   });
   const atLimit =
     usage.limit !== null &&
@@ -194,20 +201,29 @@ export function ProductsClient({
         }
       />
 
-      <div className="flex items-center justify-between">
-        <Select
-          value={filter}
-          onValueChange={(v) => setFilter(v as typeof filter)}
-        >
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Filter" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="inactive">Inactive</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Select
+            value={filter}
+            onValueChange={(v) => setFilter(v as typeof filter)}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search products…"
+            className="w-full sm:w-64"
+            aria-label="Search products"
+          />
+        </div>
         <span className="text-sm text-muted-foreground">
           {visible.length} product{visible.length === 1 ? "" : "s"}
         </span>
@@ -232,7 +248,9 @@ export function ProductsClient({
                   colSpan={6}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  No products found. Add your first product to get started.
+                  {products.length === 0
+                    ? "No products found. Add your first product to get started."
+                    : "No products match your search or filter."}
                 </TableCell>
               </TableRow>
             ) : (

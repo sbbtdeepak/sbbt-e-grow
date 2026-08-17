@@ -1614,6 +1614,9 @@ export async function setCompanyActive(
  * Purchase/packing/dispatch/delivery are order stages — they are covered
  * by the orders / order_items checks.
  */
+// ERP business data only. company_settings / company_usage / subscriptions
+// are scaffolding created for every tenant and cascade on company delete —
+// they must not make an otherwise-empty company undeletable.
 const DELETE_BLOCKING_TABLES = [
   "products",
   "marketplaces",
@@ -1621,8 +1624,6 @@ const DELETE_BLOCKING_TABLES = [
   "orders",
   "order_items",
   "payments",
-  "company_settings",
-  "company_usage",
 ] as const;
 
 /** Stable server-side protection rule for the seeded demo tenant. */

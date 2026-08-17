@@ -35,6 +35,8 @@ import {
 import { EntityDialog } from "@/components/crud/entity-dialog";
 import { ConfirmDelete } from "@/components/crud/confirm-delete";
 import { PageHeader } from "@/components/layout/page-header";
+import { UsageMeter } from "@/components/saas/usage-meter";
+import type { UsageStat } from "@/lib/saas/usage";
 import {
   createMarketplace,
   updateMarketplace,
@@ -222,7 +224,7 @@ function SellerAccountDialog({
   return (
     <EntityDialog
       title={seller ? `Edit ${seller.name}` : "Add Seller Account"}
-      description="Seller accounts are unlimited per marketplace."
+      description="Seller accounts are counted against your plan limit for this company."
       trigger={
         <Button size="sm" variant={seller ? "ghost" : "outline"}>
           {seller ? (
@@ -246,12 +248,19 @@ function SellerAccountDialog({
 
 function SellerAccountsDialog({
   marketplace,
+  sellerUsage,
   router,
 }: {
   marketplace: MarketplaceWithSellers;
+  sellerUsage: UsageStat;
   router: ReturnType<typeof useRouter>;
 }) {
   const [open, setOpen] = useState(false);
+
+  const sellerAtLimit =
+    sellerUsage.limit !== null &&
+    sellerUsage.limit !== Infinity &&
+    sellerUsage.usage >= sellerUsage.limit;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -265,9 +274,12 @@ function SellerAccountsDialog({
         <DialogHeader>
           <DialogTitle>{marketplace.name} — Seller Accounts</DialogTitle>
           <DialogDescription>
-            Manage unlimited seller accounts for this marketplace.
+            Seller accounts are counted against your plan limit for this
+            company (not per marketplace).
           </DialogDescription>
         </DialogHeader>
+
+        <UsageMeter stat={sellerUsage} label="Seller accounts" />
 
         <div className="flex flex-col gap-3">
           {marketplace.seller_accounts.length === 0 ? (
@@ -328,10 +340,17 @@ function SellerAccountsDialog({
             </div>
           )}
 
-          <SellerAccountDialog
-            marketplaces={[marketplace]}
-            router={router}
-          />
+          {sellerAtLimit ? (
+            <p className="rounded-md border border-dashed p-3 text-center text-sm text-muted-foreground">
+              You have reached your seller-account limit. Delete or deactivate
+              an existing account to add another.
+            </p>
+          ) : (
+            <SellerAccountDialog
+              marketplaces={[marketplace]}
+              router={router}
+            />
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -344,17 +363,35 @@ function SellerAccountsDialog({
 
 export function MarketplacesClient({
   marketplaces,
+  usage,
+  sellerUsage,
 }: {
   marketplaces: MarketplaceWithSellers[];
+  usage: UsageStat;
+  sellerUsage: UsageStat;
 }) {
   const router = useRouter();
+
+  const marketplaceAtLimit =
+    usage.limit !== null &&
+    usage.limit !== Infinity &&
+    usage.usage >= usage.limit;
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <PageHeader
         title="Marketplaces"
-        description="Create marketplaces and manage unlimited seller accounts per marketplace."
-        actions={<MarketplaceDialog router={router} />}
+        description="Create marketplaces and manage seller accounts for your channels."
+        actions={
+          <>
+            <UsageMeter stat={usage} />
+            {!marketplaceAtLimit ? (
+              <MarketplaceDialog router={router} />
+            ) : (
+              <Badge variant="destructive">Marketplace limit reached</Badge>
+            )}
+          </>
+        }
       />
 
       <div className="rounded-lg border bg-card">
@@ -405,6 +442,7 @@ export function MarketplacesClient({
                     <div className="flex items-center justify-end gap-1">
                       <SellerAccountsDialog
                         marketplace={marketplace}
+                        sellerUsage={sellerUsage}
                         router={router}
                       />
                       <MarketplaceDialog

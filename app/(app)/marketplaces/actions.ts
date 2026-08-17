@@ -126,6 +126,23 @@ export async function deleteMarketplace(id: string): Promise<ActionResult> {
 
   const supabase = await createSupabaseServerClient();
 
+  // Refuse deletion while seller accounts depend on this marketplace.
+  // seller_accounts.marketplace_id is ON DELETE CASCADE — a raw delete
+  // would silently destroy those accounts, so we block it explicitly.
+  const { count: sellerCount } = await supabase
+    .from("seller_accounts")
+    .select("id", { count: "exact", head: true })
+    .eq("marketplace_id", id)
+    .eq("company_id", ctx.companyId);
+
+  if (sellerCount && sellerCount > 0) {
+    return {
+      ok: false,
+      error:
+        "This marketplace has seller accounts and cannot be deleted. Remove or deactivate its seller accounts first, or deactivate the marketplace instead.",
+    };
+  }
+
   const { error } = await supabase
     .from("marketplaces")
     .delete()
@@ -137,7 +154,7 @@ export async function deleteMarketplace(id: string): Promise<ActionResult> {
       return {
         ok: false,
         error:
-          "Marketplace is referenced by seller accounts or orders and cannot be deleted.",
+          "Marketplace is referenced by orders and cannot be deleted.",
       };
     }
     return { ok: false, error: mapDbError(error) };
