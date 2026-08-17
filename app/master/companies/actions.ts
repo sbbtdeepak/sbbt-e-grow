@@ -7,15 +7,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/auth/session";
-import { getInviteRedirectUrl } from "@/lib/site";
+import { getInviteRedirectUrl, getSiteUrl } from "@/lib/site";
+import { sendAccountCredentialsEmail } from "@/lib/email/credentials-email";
 import {
   findUserByEmail,
   mapInviteError,
   fetchAssignedUsernames,
+  createUserWithTemporaryPassword,
+  resetUserPassword,
 } from "@/lib/supabase/admin-users";
 import {
   inviteUserData,
   resolveCompanyAdminState,
+  resolveAccountStatus,
+  type AccountStatus,
   type CompanyAdminState,
 } from "@/lib/auth/invite-state";
 import { generateUsername } from "@/lib/auth/usernames";
@@ -148,6 +153,10 @@ export async function createCompany(input: {
     adminInvited: boolean;
     inviteStatus?: "sent" | "already_registered" | "rate_limited" | "failed";
     adminInviteError?: string;
+    /** Generated User ID of the admin (e.g. acme.admin) when created. */
+    adminUsername?: string;
+    /** Plaintext temporary password — shown ONCE to the creator. */
+    temporaryPassword?: string;
   }>
 > {
   await requireRole("master_admin");
@@ -278,11 +287,16 @@ export async function createCompany(input: {
     subscriptionId = subscription.id;
   }
 
-  // Optional company-admin invitation — separate, non-fatal operation.
-  // Never reassigns an existing auth user into the new company.
+  // Optional company-admin account creation — separate, non-fatal
+  // operation. Never reassigns an existing auth user into the new company.
+  // New accounts are created with a server-generated temporary password
+  // (immediately usable — no dependency on invitation email delivery); the
+  // plaintext is returned once and the first login forces a password change.
   let adminInvited = false;
   let adminInviteError: string | undefined;
   let inviteStatus: "sent" | "already_registered" | "rate_limited" | "failed" | undefined;
+  let adminUsername: string | undefined;
+  let temporaryPassword: string | undefined;
   if (adminEmail) {
     const admin = await createSupabaseAdminClient();
 
@@ -296,35 +310,35 @@ export async function createCompany(input: {
     } else if (lookup.user) {
       inviteStatus = "already_registered";
       adminInviteError =
-        "This email is already registered. The company was created, but no admin invitation was sent. No user was reassigned.";
+        "This email is already registered. The company was created, but no admin account was created. No user was reassigned.";
     } else {
-      const { data: inviteData, error: inviteError } =
-        await admin.auth.admin.inviteUserByEmail(adminEmail, {
-          data: { full_name: null, ...inviteUserData("company_admin") },
-          redirectTo: getInviteRedirectUrl(),
-        });
+      // Create the account server-side with a temporary password. The User
+      // ID is generated from the company slug — never accepted from the
+      // client. The durable pending-password gate (inviteUserData) forces
+      // the first login through /set-password.
+      const created = await createUserWithTemporaryPassword(
+        admin,
+        adminEmail,
+        { full_name: null, ...inviteUserData("company_admin") },
+      );
 
-      if (inviteError || !inviteData?.user?.id) {
-        const mapped = mapInviteError(inviteError);
-        inviteStatus =
-          mapped.kind === "rate_limited" ? "rate_limited" : "failed";
-        adminInviteError = mapped.message;
+      if (!created.ok) {
+        inviteStatus = "failed";
+        adminInviteError = created.error;
       } else {
-        // Assign the invited user's profile to the new company as its admin.
-        // User ID is generated server-side from the company slug — never
-        // accepted from the client.
         const existingUsernames = await fetchAssignedUsernames(admin);
+        const username = generateUsername(
+          company.slug,
+          "company_admin",
+          existingUsernames,
+        );
         const { error: profileError } = await admin.from("profiles").upsert({
-          id: inviteData.user.id,
+          id: created.userId,
           company_id: company.id,
           role: "company_admin",
           full_name: null,
           is_active: true,
-          username: generateUsername(
-            company.slug,
-            "company_admin",
-            existingUsernames,
-          ),
+          username,
         });
 
         if (profileError) {
@@ -336,6 +350,20 @@ export async function createCompany(input: {
         } else {
           adminInvited = true;
           inviteStatus = "sent";
+          adminUsername = username;
+          temporaryPassword = created.temporaryPassword;
+          // Optional delivery channel — never the source of truth (the
+          // credentials are shown once in the UI regardless). Non-fatal:
+          // skips silently when RESEND_API_KEY is not configured, and never
+          // sends a permanent password.
+          void sendAccountCredentialsEmail({
+            to: adminEmail,
+            companyName: name,
+            roleLabel: "Company Administrator",
+            username,
+            temporaryPassword: created.temporaryPassword,
+            loginUrl: `${getSiteUrl()}/login`,
+          });
         }
       }
     }
@@ -352,25 +380,39 @@ export async function createCompany(input: {
       adminInvited,
       inviteStatus,
       ...(adminInviteError ? { adminInviteError } : {}),
+      ...(adminUsername ? { adminUsername } : {}),
+      ...(temporaryPassword ? { temporaryPassword } : {}),
     },
   };
 }
 
 /**
- * Invite (or retry inviting) a company admin for an existing company.
+ * Create the company-admin account for an existing company.
  *
  * Master Admin only. The company context is derived server-side from the
  * company record — never from client-supplied company data. Existing auth
  * users are NEVER reassigned into the company; an email that already has
  * an identity returns a safe, actionable error instead.
  *
+ * The account is created with a server-generated temporary password (no
+ * invitation email needed) and the first login forces a password change.
+ * The plaintext password is returned ONCE for display and never stored.
+ *
  * Refuses when the company already has a company_admin profile assigned
- * (including a pending, not-yet-confirmed invite).
+ * (including a pending, not-yet-confirmed invite) — use
+ * resetCompanyAdminPassword() to recover credentials for an existing admin.
  */
 export async function inviteCompanyAdmin(
   companyId: string,
   email: string,
-): Promise<ActionResult<{ invited: boolean; email: string }>> {
+): Promise<
+  ActionResult<{
+    invited: boolean;
+    email: string;
+    username: string | null;
+    temporaryPassword: string;
+  }>
+> {
   await requireRole("master_admin");
 
   const parsed = z
@@ -392,7 +434,7 @@ export async function inviteCompanyAdmin(
   // Verify the target company exists — context comes from the DB row.
   const { data: company, error: companyError } = await supabase
     .from("companies")
-    .select("id, slug")
+    .select("id, slug, name")
     .eq("id", parsed.data.companyId)
     .maybeSingle();
 
@@ -430,31 +472,30 @@ export async function inviteCompanyAdmin(
     };
   }
 
-  const { data: inviteData, error: inviteError } =
-    await admin.auth.admin.inviteUserByEmail(adminEmail, {
-      data: { full_name: null, ...inviteUserData("company_admin") },
-      redirectTo: getInviteRedirectUrl(),
-    });
-
-  if (inviteError || !inviteData?.user?.id) {
-    const mapped = mapInviteError(inviteError);
-    return { ok: false, error: mapped.message };
+  // Create the account server-side with a temporary password. The User ID
+  // is generated from the company slug — never accepted from the client.
+  const created = await createUserWithTemporaryPassword(
+    admin,
+    adminEmail,
+    { full_name: null, ...inviteUserData("company_admin") },
+  );
+  if (!created.ok) {
+    return { ok: false, error: created.error };
   }
 
-  // User ID is generated server-side from the company slug — never
-  // accepted from the client.
   const existingUsernames = await fetchAssignedUsernames(admin);
+  const username = generateUsername(
+    company.slug,
+    "company_admin",
+    existingUsernames,
+  );
   const { error: profileError } = await admin.from("profiles").upsert({
-    id: inviteData.user.id,
+    id: created.userId,
     company_id: company.id,
     role: "company_admin",
     full_name: null,
     is_active: true,
-    username: generateUsername(
-      company.slug,
-      "company_admin",
-      existingUsernames,
-    ),
+    username,
   });
 
   if (profileError) {
@@ -462,14 +503,108 @@ export async function inviteCompanyAdmin(
       ok: false,
       error: mapDbError(
         profileError,
-        "The invitation was sent, but the admin profile could not be assigned.",
+        "The admin account was created, but the profile could not be assigned.",
       ),
     };
   }
 
   revalidatePath(`/master/companies/${company.id}`);
   revalidatePath("/master/companies");
-  return { ok: true, data: { invited: true, email: adminEmail } };
+
+  // Optional delivery channel — non-fatal, skips when unconfigured.
+  void sendAccountCredentialsEmail({
+    to: adminEmail,
+    companyName: company.name,
+    roleLabel: "Company Administrator",
+    username,
+    temporaryPassword: created.temporaryPassword,
+    loginUrl: `${getSiteUrl()}/login`,
+  });
+
+  return {
+    ok: true,
+    data: {
+      invited: true,
+      email: adminEmail,
+      username,
+      temporaryPassword: created.temporaryPassword,
+    },
+  };
+}
+
+/**
+ * Reset the company-admin's password to a new temporary password.
+ *
+ * Master Admin only. Works for any existing company admin — whether their
+ * setup is pending (legacy invite lost / never accepted) or fully active.
+ * Generates a new random password server-side, re-arms the mandatory
+ * password-change gate, invalidates the previous password immediately, and
+ * returns the plaintext ONCE for display. The old password is never shown.
+ */
+export async function resetCompanyAdminPassword(
+  companyId: string,
+): Promise<
+  ActionResult<{ email: string; username: string | null; temporaryPassword: string }>
+> {
+  await requireRole("master_admin");
+
+  const parsed = companyIdSchema.safeParse({ companyId });
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid company ID." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: company } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("id", parsed.data.companyId)
+    .maybeSingle();
+  if (!company) {
+    return { ok: false, error: "Company not found." };
+  }
+
+  const { data: adminProfile } = await supabase
+    .from("profiles")
+    .select("id, username")
+    .eq("company_id", company.id)
+    .eq("role", "company_admin")
+    .maybeSingle();
+
+  if (!adminProfile) {
+    return {
+      ok: false,
+      error: "No company admin is assigned to this company. Create one first.",
+    };
+  }
+
+  const admin = await createSupabaseAdminClient();
+  const { data: authUser } = await admin.auth.admin.getUserById(
+    adminProfile.id,
+  );
+  const user = authUser?.user ?? null;
+
+  if (!user?.email) {
+    return { ok: false, error: "Unable to resolve the company admin account." };
+  }
+
+  const result = await resetUserPassword(admin, adminProfile.id, {
+    ...inviteUserData("company_admin"),
+  });
+  if (!result.ok) {
+    return { ok: false, error: result.error };
+  }
+
+  revalidatePath(`/master/companies/${company.id}`);
+  revalidatePath("/master/companies");
+  return {
+    ok: true,
+    data: {
+      email: user.email,
+      username: adminProfile.username ?? null,
+      temporaryPassword: result.temporaryPassword,
+    },
+  };
 }
 
 /**
@@ -685,6 +820,12 @@ export async function getCompanyDetail(
   companyAdminUsername: string | null;
   /** Auth-derived: "none" | "pending" | "confirmed" (never profiles.is_active). */
   adminState: CompanyAdminState;
+  /**
+   * Honest account status (Phase 24.8): none | setup_pending | active |
+   * suspended | invited. Derived from real Auth state + profiles.is_active
+   * — never "active" merely because a profile exists.
+   */
+  adminSetupState: AccountStatus;
 }>> {
   await requireRole("master_admin");
 
@@ -761,7 +902,7 @@ export async function getCompanyDetail(
   // admin's email via auth so the detail page can show it.
   const { data: adminProfile } = await supabase
     .from("profiles")
-    .select("id, username")
+    .select("id, username, is_active")
     .eq("company_id", company.id)
     .eq("role", "company_admin")
     .maybeSingle();
@@ -769,6 +910,7 @@ export async function getCompanyDetail(
   let companyAdminEmail: string | null = null;
   let companyAdminUsername: string | null = null;
   let adminState: CompanyAdminState = "none";
+  let adminSetupState: AccountStatus = "none";
   if (adminProfile) {
     const admin = await createSupabaseAdminClient();
     const { data: adminUser } = await admin.auth.admin.getUserById(
@@ -780,6 +922,12 @@ export async function getCompanyDetail(
     // Pending vs confirmed comes from the real Auth invitation state
     // (invited_at / confirmed_at), not from profiles.is_active.
     adminState = resolveCompanyAdminState(authUser);
+    // Honest status: durable pending-password gate first, then legacy
+    // invite state, then suspended, then active.
+    adminSetupState = resolveAccountStatus(
+      authUser,
+      adminProfile.is_active ?? true,
+    );
   }
 
   return {
@@ -799,6 +947,7 @@ export async function getCompanyDetail(
       companyAdminEmail,
       companyAdminUsername,
       adminState,
+      adminSetupState,
     },
   };
 }
@@ -1448,17 +1597,24 @@ export async function setCompanyActive(
  * Permanently delete an EMPTY company. Master Admin only.
  *
  * Safety contract (server-side enforced, never UI-only):
- *  - Refuses when ANY business data exists under the company (products,
- *    marketplaces, seller accounts, orders, order items, payments, company
- *    settings, usage, permissions, memberships, or profiles).
- *  - Subscriptions alone are allowed to be deleted as part of the
- *    empty-company cleanup.
+ *  - SBBT Demo is PROTECTED: the server rejects any deletion attempt by
+ *    stable slug — the UI is never the enforcement boundary.
+ *  - Refuses when ANY ERP business data exists (products, marketplaces,
+ *    seller accounts, orders, order items, payments, company settings,
+ *    usage). Companies with business data may only be archived.
  *  - Requires the master admin to type the company name exactly.
+ *  - User accounts are NOT orphaned: profiles of the company are resolved
+ *    first, their Supabase Auth users are deleted through the admin API
+ *    (profiles cascade via FK), and ONLY then is the company row deleted
+ *    (subscriptions / settings / usage / permissions cascade). The order
+ *    is deliberate — a failure before the final delete leaves the company
+ *    intact and returns an honest error; profiles can never be left with
+ *    company_id = NULL (that FK is SET NULL on company delete).
  *
  * Purchase/packing/dispatch/delivery are order stages — they are covered
  * by the orders / order_items checks.
  */
-const BUSINESS_TABLES = [
+const DELETE_BLOCKING_TABLES = [
   "products",
   "marketplaces",
   "seller_accounts",
@@ -1467,10 +1623,10 @@ const BUSINESS_TABLES = [
   "payments",
   "company_settings",
   "company_usage",
-  "user_permissions",
-  "user_company_roles",
-  "profiles",
 ] as const;
+
+/** Stable server-side protection rule for the seeded demo tenant. */
+const PROTECTED_COMPANY_SLUGS = new Set(["sbbt-demo"]);
 
 export async function deleteCompany(
   companyId: string,
@@ -1489,12 +1645,20 @@ export async function deleteCompany(
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
-    .select("id, name, is_active")
+    .select("id, name, slug, is_active")
     .eq("id", parsed.data.companyId)
     .maybeSingle();
 
   if (companyError || !company) {
     return { ok: false, error: companyError?.message ?? "Company not found." };
+  }
+
+  // Server-side protection — enforced even if the UI is bypassed.
+  if (PROTECTED_COMPANY_SLUGS.has(company.slug)) {
+    return {
+      ok: false,
+      error: `${company.name} is protected and cannot be permanently deleted.`,
+    };
   }
 
   // Strong confirmation: the exact company name must be typed.
@@ -1505,9 +1669,9 @@ export async function deleteCompany(
     };
   }
 
-  // Refuse when any business data exists.
+  // Refuse when any ERP business data exists.
   const present: string[] = [];
-  for (const table of BUSINESS_TABLES) {
+  for (const table of DELETE_BLOCKING_TABLES) {
     const { count } = await supabase
       .from(table as "products")
       .select("id", { count: "exact", head: true })
@@ -1519,19 +1683,57 @@ export async function deleteCompany(
     return {
       ok: false,
       error:
-        "Company cannot be permanently deleted because it contains business data (" +
+        "This company contains business data and cannot be permanently deleted (" +
         present.join(", ") +
         "). Archive the company instead.",
     };
   }
 
-  // Empty company — safe to delete. Subscriptions cascade.
+  // Resolve the company's profiles → Auth user ids BEFORE any deletion, so
+  // we know exactly which Auth users belong to this company only.
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("company_id", company.id);
+  const userIds = (profiles ?? []).map((p) => p.id);
+
+  // Delete the Auth users first (profiles cascade via profiles.id →
+  // auth.users ON DELETE CASCADE). If this fails, abort with the company
+  // fully intact — no partial state.
+  const admin = await createSupabaseAdminClient();
+  for (const userId of userIds) {
+    const { error } = await admin.auth.admin.deleteUser(userId);
+    if (error) {
+      return {
+        ok: false,
+        error:
+          "The company's user accounts could not be removed. No data was deleted — please try again.",
+      };
+    }
+  }
+
+  // Company row last: subscriptions / settings / usage / permissions
+  // cascade; profiles were already removed with their Auth users, so the
+  // SET NULL company FK can never leave orphans.
   const { error } = await supabase
     .from("companies")
     .delete()
     .eq("id", company.id);
 
   if (error) return { ok: false, error: mapDbError(error) };
+
+  // Verify no profiles remain for the deleted company.
+  const { count } = await supabase
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", company.id);
+  if (count && count > 0) {
+    return {
+      ok: false,
+      error:
+        "Company deleted, but some profile records could not be removed. Contact support to clean up the remaining rows.",
+    };
+  }
 
   revalidatePath("/master/companies");
   return { ok: true, data: undefined };
@@ -1687,7 +1889,9 @@ export async function inviteAdminDiagnostics(
     };
   }
 
-  details.push("No auth account exists for this email — an invitation can be sent.");
+  details.push(
+    "No auth account exists for this email — an account can be created with a temporary password (no invitation email required).",
+  );
   details.push(
     "Email sending is subject to Supabase rate limits, which cannot be checked without actually sending.",
   );

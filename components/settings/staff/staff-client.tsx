@@ -21,6 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PermissionEditor } from "@/components/settings/staff/permission-editor";
+import { TemporaryCredentials } from "@/components/auth/temporary-credentials";
 import { inviteSchema } from "@/lib/validations/staff";
 import type { StaffMember } from "@/app/(app)/settings/staff/actions";
 import {
@@ -29,6 +30,7 @@ import {
   deactivateStaff,
   updateStaffPermission,
   removeStaff,
+  resetStaffPassword,
 } from "@/app/(app)/settings/staff/actions";
 
 type StaffClientProps = {
@@ -41,6 +43,13 @@ export function StaffClient({ staff }: StaffClientProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One-time temporary credentials from invite/reset — shown in a dialog.
+  const [credentials, setCredentials] = useState<{
+    username: string;
+    email: string;
+    temporaryPassword: string;
+    title: string;
+  } | null>(null);
 
   const list = staff;
 
@@ -62,10 +71,35 @@ export function StaffClient({ staff }: StaffClientProps) {
     } else {
       setInviteOpen(false);
       reset();
-      // Force re-fetch by reloading the page data
-      window.location.reload();
+      if (result.data.temporaryPassword) {
+        // Show the one-time credentials; reload the list on dismiss.
+        setCredentials({
+          username: result.data.username ?? "",
+          email: result.data.email,
+          temporaryPassword: result.data.temporaryPassword,
+          title: "Staff account created",
+        });
+      } else {
+        // Existing-user association path — no new password to show.
+        window.location.reload();
+      }
     }
     setSaving(false);
+  };
+
+  const handleResetPassword = async (userId: string) => {
+    setError(null);
+    const result = await resetStaffPassword(userId);
+    if (!result.ok) {
+      setError(result.error);
+    } else {
+      setCredentials({
+        username: result.data.username ?? "",
+        email: result.data.email,
+        temporaryPassword: result.data.temporaryPassword,
+        title: "Password reset — temporary password",
+      });
+    }
   };
 
   const handleActivate = async (userId: string) => {
@@ -100,6 +134,45 @@ export function StaffClient({ staff }: StaffClientProps) {
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      {credentials ? (
+        <Dialog
+          open={credentials !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setCredentials(null);
+              window.location.reload();
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{credentials.title}</DialogTitle>
+              <DialogDescription>
+                Share these credentials with the user securely. They will not
+                be shown again.
+              </DialogDescription>
+            </DialogHeader>
+            <TemporaryCredentials
+              title={credentials.title}
+              username={credentials.username}
+              email={credentials.email}
+              temporaryPassword={credentials.temporaryPassword}
+            />
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() => {
+                  setCredentials(null);
+                  window.location.reload();
+                }}
+              >
+                Done
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
       <PageHeader
         title="Staff"
         description="Manage company staff, their permissions, and activation status."
@@ -116,8 +189,9 @@ export function StaffClient({ staff }: StaffClientProps) {
                 <DialogHeader>
                   <DialogTitle>Invite Staff</DialogTitle>
                   <DialogDescription>
-                    Enter an email to invite a new staff member. They will receive
-                    an email to set their password.
+                    Enter an email to create a staff account. A temporary
+                    password is generated and shown once — the first login
+                    requires setting a personal password.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
@@ -182,6 +256,7 @@ export function StaffClient({ staff }: StaffClientProps) {
               onActivate={handleActivate}
               onDeactivate={handleDeactivate}
               onRemove={handleRemove}
+              onResetPassword={handleResetPassword}
               onPermissionChange={handlePermissionChange}
             />
           ))
@@ -196,6 +271,7 @@ type StaffRowProps = {
   onActivate: (id: string) => void;
   onDeactivate: (id: string) => void;
   onRemove: (id: string) => void;
+  onResetPassword: (id: string) => void;
   onPermissionChange: (
     userId: string,
     permission: string,
@@ -203,7 +279,14 @@ type StaffRowProps = {
   ) => void;
 };
 
-function StaffRow({ member, onActivate, onDeactivate, onRemove, onPermissionChange }: StaffRowProps) {
+function StaffRow({
+  member,
+  onActivate,
+  onDeactivate,
+  onRemove,
+  onResetPassword,
+  onPermissionChange,
+}: StaffRowProps) {
   return (
     <Card className="p-4">
       <div className="flex items-start justify-between gap-4">
@@ -218,6 +301,14 @@ function StaffRow({ member, onActivate, onDeactivate, onRemove, onPermissionChan
             {member.invitationStatus === "pending" && (
               <Badge variant="outline">Invitation pending</Badge>
             )}
+            {member.pendingPasswordSetup && (
+              <Badge
+                variant="outline"
+                className="border-amber-300/70 text-amber-700 dark:border-amber-500/40 dark:text-amber-400"
+              >
+                Password setup pending
+              </Badge>
+            )}
           </div>
           {member.username ? (
             <p className="font-mono text-sm text-foreground">
@@ -227,7 +318,15 @@ function StaffRow({ member, onActivate, onDeactivate, onRemove, onPermissionChan
           <p className="text-sm text-muted-foreground">{member.email}</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onResetPassword(member.id)}
+            title="Generate a new temporary password"
+          >
+            Reset password
+          </Button>
           {member.isActive ? (
             <Button
               size="sm"

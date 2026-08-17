@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createCompany } from "./actions";
+import { TemporaryCredentials } from "@/components/auth/temporary-credentials";
 import type { Plan } from "@/lib/saas/entitlements";
 
 type CreateCompanyDialogProps = {
@@ -51,6 +52,9 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
     adminEmailProvided: boolean;
     inviteStatus?: "sent" | "already_registered" | "rate_limited" | "failed";
     warning?: string;
+    adminUsername?: string;
+    adminEmail?: string;
+    temporaryPassword?: string;
   } | null>(null);
 
   const reset = () => {
@@ -80,13 +84,17 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
         return;
       }
 
+      const adminEmailRaw = String(formData.get("adminEmail") ?? "").trim();
       setSuccess({
         companyId: result.data.companyId,
         name: result.data.companyName,
         adminInvited: result.data.adminInvited,
-        adminEmailProvided: String(formData.get("adminEmail") ?? "").trim().length > 0,
+        adminEmailProvided: adminEmailRaw.length > 0,
         inviteStatus: result.data.inviteStatus,
         warning: result.data.adminInviteError,
+        adminUsername: result.data.adminUsername,
+        adminEmail: result.data.adminUsername ? adminEmailRaw : undefined,
+        temporaryPassword: result.data.temporaryPassword,
       });
       router.refresh();
     });
@@ -119,37 +127,44 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
                 is ready.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
-              <p className="text-sm font-medium">Admin invitation</p>
-              {success.adminInvited ? (
-                <p className="flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-500">
-                  <CheckCircle2 className="size-4" /> Sent
-                </p>
-              ) : success.inviteStatus === "already_registered" ? (
-                <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-500">
-                  <AlertTriangle className="size-4" /> Already registered — no
-                  user was reassigned
-                </p>
-              ) : success.inviteStatus === "rate_limited" ? (
-                <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-500">
-                  <AlertTriangle className="size-4" /> Rate limited — try again
-                  later from the company detail page
-                </p>
-              ) : success.adminEmailProvided ? (
-                <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-500">
-                  <AlertTriangle className="size-4" /> Failed — retry from the
-                  company detail page
-                </p>
-              ) : (
-                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  No admin email provided — invite an admin later from the
-                  company detail page.
-                </p>
-              )}
-              {!success.adminInvited && success.warning ? (
-                <p className="text-xs text-muted-foreground">{success.warning}</p>
-              ) : null}
-            </div>
+            {success.adminInvited &&
+            success.temporaryPassword &&
+            success.adminUsername ? (
+              <TemporaryCredentials
+                title="Company admin account created"
+                username={success.adminUsername}
+                email={success.adminEmail ?? ""}
+                temporaryPassword={success.temporaryPassword}
+              />
+            ) : (
+              <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                <p className="text-sm font-medium">Admin account</p>
+                {success.inviteStatus === "already_registered" ? (
+                  <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-500">
+                    <AlertTriangle className="size-4" /> Already registered — no
+                    user was reassigned
+                  </p>
+                ) : success.inviteStatus === "rate_limited" ? (
+                  <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-500">
+                    <AlertTriangle className="size-4" /> Rate limited — try again
+                    later from the company detail page
+                  </p>
+                ) : success.adminEmailProvided ? (
+                  <p className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-500">
+                    <AlertTriangle className="size-4" /> Failed — retry from the
+                    company detail page
+                  </p>
+                ) : (
+                  <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    No admin email provided — invite an admin later from the
+                    company detail page.
+                  </p>
+                )}
+                {!success.adminInvited && success.warning ? (
+                  <p className="text-xs text-muted-foreground">{success.warning}</p>
+                ) : null}
+              </div>
+            )}
             <DialogFooter className="gap-2 sm:justify-between">
               <Button
                 type="button"
@@ -261,8 +276,9 @@ export function CreateCompanyDialog({ plans }: CreateCompanyDialogProps) {
                   disabled={pending}
                 />
                 <p className="text-xs text-muted-foreground">
-                  If provided, an invitation email is sent and the invited
-                  user becomes the company admin on acceptance.
+                  If provided, an admin account is created immediately with a
+                  temporary password (shown once). The first login requires
+                  setting a personal password.
                 </p>
               </div>
               {error ? (

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database";
 import { mapDbError } from "@/lib/saas/db-errors";
+import { generateTemporaryPassword } from "@/lib/auth/passwords";
 
 export type AdminClient = SupabaseClient<Database>;
 
@@ -62,7 +63,6 @@ export async function fetchAssignedUsernames(
 }
 
 export type InviteErrorKind = "already_registered" | "rate_limited" | "generic";
-
 /**
  * Map a GoTrue admin-invite error to a safe, actionable message plus a
  * machine-readable kind.
@@ -106,4 +106,92 @@ export function mapInviteError(
     kind: "generic",
     message: "The invitation could not be sent. Please try again later.",
   };
+}
+
+export type CreateUserWithPasswordResult =
+  | {
+      ok: true;
+      userId: string;
+      email: string;
+      /** Plaintext temporary password — shown ONCE to the creator. */
+      temporaryPassword: string;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Create an Auth user with a server-generated temporary password.
+ *
+ * Uses the admin create-user API with `email_confirm: true` — the account
+ * is immediately usable (no invitation email, no dependency on Supabase's
+ * email quota). The caller must already have verified the email is NOT
+ * registered (findUserByEmail) and holds the right application role.
+ *
+ * `userMetadata` should carry the durable pending-password gate (e.g.
+ * inviteUserData(role)) so the first login is forced through /set-password.
+ * The plaintext password is returned once and never persisted anywhere.
+ */
+export async function createUserWithTemporaryPassword(
+  admin: AdminClient,
+  email: string,
+  userMetadata: Record<string, unknown>,
+): Promise<CreateUserWithPasswordResult> {
+  const normalized = email.trim().toLowerCase();
+  const temporaryPassword = generateTemporaryPassword();
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email: normalized,
+    password: temporaryPassword,
+    email_confirm: true,
+    user_metadata: userMetadata,
+  });
+
+  if (error || !data?.user?.id) {
+    const mapped = mapInviteError(error);
+    return {
+      ok: false,
+      error:
+        mapped.kind === "already_registered"
+          ? "This email is already registered. No user was reassigned."
+          : mapped.message,
+    };
+  }
+
+  return {
+    ok: true,
+    userId: data.user.id,
+    email: normalized,
+    temporaryPassword,
+  };
+}
+
+export type ResetUserPasswordResult =
+  | { ok: true; temporaryPassword: string }
+  | { ok: false; error: string };
+
+/**
+ * Reset an existing user's password to a new random temporary password and
+ * re-arm the durable "must change password" gate (user_metadata).
+ *
+ * The previous password stops working immediately (GoTrue replaces it). The
+ * plaintext is returned once and never persisted. `userMetadata` should be
+ * the full intended metadata (role + gate) — GoTrue's admin update replaces
+ * user_metadata, so include anything that must survive.
+ */
+export async function resetUserPassword(
+  admin: AdminClient,
+  userId: string,
+  userMetadata: Record<string, unknown>,
+): Promise<ResetUserPasswordResult> {
+  const temporaryPassword = generateTemporaryPassword();
+
+  const { error } = await admin.auth.admin.updateUserById(userId, {
+    password: temporaryPassword,
+    user_metadata: userMetadata,
+  });
+
+  if (error) {
+    return { ok: false, error: mapInviteError(error).message };
+  }
+
+  return { ok: true, temporaryPassword };
 }

@@ -7,12 +7,18 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireCompanyUser } from "@/lib/auth/session";
 import { assertWithinLimit, EntitlementError } from "@/lib/saas/entitlements";
 import { mapDbError } from "@/lib/saas/db-errors";
-import { getInviteRedirectUrl } from "@/lib/site";
+import { getInviteRedirectUrl, getSiteUrl } from "@/lib/site";
+import { sendAccountCredentialsEmail } from "@/lib/email/credentials-email";
 import {
   findUserByEmail,
   fetchAssignedUsernames,
+  createUserWithTemporaryPassword,
+  resetUserPassword,
 } from "@/lib/supabase/admin-users";
-import { inviteUserData } from "@/lib/auth/invite-state";
+import {
+  inviteUserData,
+  INVITE_PENDING_META_KEY,
+} from "@/lib/auth/invite-state";
 import { generateUsername } from "@/lib/auth/usernames";
 import {
   MODULE_PERMISSIONS,
@@ -28,6 +34,12 @@ export type StaffMember = {
   role: string;
   isActive: boolean;
   invitationStatus: "invited" | "pending" | "active";
+  /**
+   * True while the durable "must set a password" gate is armed for this
+   * account (temporary password issued, first login not yet completed).
+   * Never "active" merely because a profile exists.
+   */
+  pendingPasswordSetup: boolean;
   permissions: Record<string, boolean>;
 };
 
@@ -39,25 +51,46 @@ type StaffActionResult =
   | { ok: true; data?: Record<string, unknown> }
   | { ok: false; error: string };
 
+type InviteStaffResult =
+  | {
+      ok: true;
+      data: {
+        userId: string;
+        email: string;
+        /** Generated User ID, e.g. acme.staff1. */
+        username?: string;
+        /** Plaintext temporary password — shown ONCE to the inviter. */
+        temporaryPassword?: string;
+      };
+    }
+  | { ok: false; error: string };
+
 function isCompanyAdmin(role: string): boolean {
   return role === "company_admin";
 }
 
 /**
- * Resolve emails for a set of user ids via targeted admin lookups.
- * Bounded by the company's staff count (itself capped by the
- * staff_users_limit), so this stays cheap and is exact regardless
- * of total platform user count.
+ * Resolve emails + pending-password state for a set of user ids via
+ * targeted admin lookups. Bounded by the company's staff count (itself
+ * capped by the staff_users_limit), so this stays cheap and is exact
+ * regardless of total platform user count.
  */
 async function getEmailsForUserIds(
   admin: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
   userIds: string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, { email: string; pendingPasswordSetup: boolean }>> {
   const results = await Promise.all(
     userIds.map(async (uid) => {
       const { data, error } = await admin.auth.admin.getUserById(uid);
-      if (error) return [uid, ""] as const;
-      return [uid, data?.user?.email ?? ""] as const;
+      if (error) return [uid, { email: "", pendingPasswordSetup: false }] as const;
+      return [
+        uid,
+        {
+          email: data?.user?.email ?? "",
+          pendingPasswordSetup:
+            data?.user?.user_metadata?.[INVITE_PENDING_META_KEY] === true,
+        },
+      ] as const;
     }),
   );
   return new Map(results);
@@ -92,10 +125,10 @@ export async function listStaff(): Promise<StaffListResult> {
     return { ok: true, data: [] };
   }
 
-  // Resolve auth user emails via targeted per-user lookups (profiles
-  // has no email column). Bounded by staff count — never a full
-  // platform-wide user scan.
-  const userEmails = await getEmailsForUserIds(
+  // Resolve auth user emails + pending-password state via targeted
+  // per-user lookups (profiles has no email column). Bounded by staff
+  // count — never a full platform-wide user scan.
+  const userLookups = await getEmailsForUserIds(
     admin,
     profiles.map((p) => p.id),
   );
@@ -120,7 +153,11 @@ export async function listStaff(): Promise<StaffListResult> {
       permissions[key] = explicit[key] ?? DEFAULT_STAFF_PERMISSIONS[key] ?? false;
     }
 
-    const email = userEmails.get(p.id) ?? "";
+    const lookup = userLookups.get(p.id) ?? {
+      email: "",
+      pendingPasswordSetup: false,
+    };
+    const email = lookup.email;
     const invitationStatus = email ? "invited" : "pending";
 
     return {
@@ -131,6 +168,7 @@ export async function listStaff(): Promise<StaffListResult> {
       role: p.role,
       isActive: p.is_active,
       invitationStatus: invitationStatus === "invited" && p.is_active ? "active" : invitationStatus,
+      pendingPasswordSetup: lookup.pendingPasswordSetup,
       permissions,
     };
   });
@@ -143,15 +181,18 @@ export async function listStaff(): Promise<StaffListResult> {
  * Invite a new staff member to the company.
  *
  * - Checks staff_users_limit (from entitlement engine).
- * - If the email has no Supabase Auth identity, sends an invite email.
- * - If the email already has an Auth identity, reuses it (no duplicate).
+ * - If the email has no Supabase Auth identity, creates the account
+ *   server-side with a temporary password (immediately usable — no
+ *   invitation email dependency) and returns the password ONCE.
+ * - If the email already has an Auth identity, reuses it (no duplicate)
+ *   but NEVER moves a user who belongs to another company.
  * - Creates a profile with role=staff, is_active=true.
  * - Inserts default permission rows.
  */
 export async function inviteStaff(
   email: string,
   fullName?: string | null,
-): Promise<StaffActionResult> {
+): Promise<InviteStaffResult> {
   const ctx = await requireCompanyUser();
   if (!isCompanyAdmin(ctx.role)) {
     return { ok: false, error: "Not authorized to invite staff." };
@@ -187,22 +228,22 @@ export async function inviteStaff(
 
   const matchingUser = lookup.user;
   let userId: string;
+  let temporaryPassword: string | undefined;
 
   if (!matchingUser) {
-    // New user — send invitation email via Supabase Auth.
-    const { data: inviteData, error: inviteError } =
-      await admin.auth.admin.inviteUserByEmail(trimmedEmail, {
-        data: { full_name: fullName ?? null, ...inviteUserData("staff") },
-        redirectTo: getInviteRedirectUrl(),
-      });
-
-    if (inviteError) {
-      return { ok: false, error: mapDbError(inviteError, "Failed to create the invitation.") };
+    // New user — create the account server-side with a temporary password
+    // (no invitation email; the account is immediately usable and the
+    // durable pending-password gate forces the first login to set one).
+    const created = await createUserWithTemporaryPassword(
+      admin,
+      trimmedEmail,
+      { full_name: fullName ?? null, ...inviteUserData("staff") },
+    );
+    if (!created.ok) {
+      return { ok: false, error: created.error };
     }
-    if (!inviteData?.user?.id) {
-      return { ok: false, error: "Failed to create invitation." };
-    }
-    userId = inviteData.user.id;
+    userId = created.userId;
+    temporaryPassword = created.temporaryPassword;
   } else {
     userId = matchingUser.id;
 
@@ -220,13 +261,32 @@ export async function inviteStaff(
         error: "This user is already a member of your company.",
       };
     }
+
+    // Tenant-isolation guard: never silently move a user who belongs to
+    // ANOTHER company into this one (profile.company_id would be
+    // overwritten by the upsert below).
+    const { data: otherCompanyProfile } = await admin
+      .from("profiles")
+      .select("company_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (
+      otherCompanyProfile?.company_id &&
+      otherCompanyProfile.company_id !== ctx.companyId
+    ) {
+      return {
+        ok: false,
+        error:
+          "This email belongs to another company. Users are never moved between companies automatically.",
+      };
+    }
   }
 
   // Generate the staff User ID server-side from the company slug — never
   // accepted from the client. Existing usernames are never reused.
   const { data: company } = await admin
     .from("companies")
-    .select("slug")
+    .select("slug, name")
     .eq("id", ctx.companyId)
     .maybeSingle();
   const existingUsernames = await fetchAssignedUsernames(admin);
@@ -266,8 +326,30 @@ export async function inviteStaff(
     return { ok: false, error: mapDbError(permError, "Unable to save staff permissions.") };
   }
 
+  // Optional delivery channel — non-fatal, skips when unconfigured. Only
+  // for a brand-new account (temporaryPassword present); never for an
+  // existing-user association. Never sends a permanent password.
+  if (temporaryPassword) {
+    void sendAccountCredentialsEmail({
+      to: trimmedEmail,
+      companyName: company?.name ?? "",
+      roleLabel: "Staff",
+      username,
+      temporaryPassword,
+      loginUrl: `${getSiteUrl()}/login`,
+    });
+  }
+
   revalidatePath("/settings/staff");
-  return { ok: true, data: { userId, email: trimmedEmail } };
+  return {
+    ok: true,
+    data: {
+      userId,
+      email: trimmedEmail,
+      ...(username ? { username } : {}),
+      ...(temporaryPassword ? { temporaryPassword } : {}),
+    },
+  };
 }
 
 /**
@@ -495,4 +577,74 @@ export async function resendInvite(email: string): Promise<StaffActionResult> {
 
   revalidatePath("/settings/staff");
   return { ok: true, data: { email: trimmedEmail } };
+}
+
+/**
+ * Reset a staff member's password to a new temporary password.
+ *
+ * Company Admin only. The target must be a staff member of the CURRENT
+ * company (server-verified — never a client-supplied company). Generates a
+ * new random password, re-arms the mandatory password-change gate (so the
+ * next login is forced through /set-password), invalidates the previous
+ * password immediately, and returns the plaintext ONCE for display. The
+ * old password is never shown.
+ */
+export async function resetStaffPassword(
+  userId: string,
+): Promise<
+  | {
+      ok: true;
+      data: {
+        email: string;
+        username: string | null;
+        temporaryPassword: string;
+      };
+    }
+  | { ok: false; error: string }
+> {
+  const ctx = await requireCompanyUser();
+  if (!isCompanyAdmin(ctx.role)) {
+    return { ok: false, error: "Not authorized." };
+  }
+
+  const admin = await createSupabaseAdminClient();
+
+  // Verify the target is a staff member of THIS company.
+  const { data: profile, error: fetchErr } = await admin
+    .from("profiles")
+    .select("id, username, is_active")
+    .eq("id", userId)
+    .eq("company_id", ctx.companyId)
+    .eq("role", "staff")
+    .maybeSingle();
+
+  if (fetchErr) {
+    return { ok: false, error: mapDbError(fetchErr, "Unable to load the staff member.") };
+  }
+  if (!profile) {
+    return { ok: false, error: "Staff member not found in your company." };
+  }
+
+  const { data: authUser } = await admin.auth.admin.getUserById(profile.id);
+  const user = authUser?.user ?? null;
+  if (!user?.email) {
+    return { ok: false, error: "Unable to resolve the staff account." };
+  }
+
+  const result = await resetUserPassword(admin, profile.id, {
+    ...inviteUserData("staff"),
+  });
+  if (!result.ok) {
+    return { ok: false, error: result.error };
+  }
+
+  revalidatePath("/settings/staff");
+  return {
+    ok: true,
+    data: {
+      email: user.email,
+      username: profile.username ?? null,
+      temporaryPassword: result.temporaryPassword,
+    },
+  };
 }

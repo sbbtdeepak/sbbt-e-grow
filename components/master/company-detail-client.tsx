@@ -10,6 +10,7 @@ import {
   CalendarDays,
   CheckCircle2,
   CreditCard,
+  KeyRound,
   RefreshCcw,
   SearchCheck,
   ShieldCheck,
@@ -52,6 +53,7 @@ import {
   inviteCompanyAdmin,
   inviteAdminDiagnostics,
   resendCompanyAdminInvite,
+  resetCompanyAdminPassword,
   setCompanyActive,
   deleteCompany,
 } from "@/app/master/companies/actions";
@@ -59,6 +61,8 @@ import type {
   InviteDiagnosticResult,
   InviteDiagnosticStatus,
 } from "@/app/master/companies/actions";
+import type { AccountStatus } from "@/lib/auth/invite-state";
+import { TemporaryCredentials } from "@/components/auth/temporary-credentials";
 import type { Plan } from "@/lib/saas/entitlements";
 import type { Database } from "@/types/database";
 import { CompanyInfoForm } from "./company-info-form";
@@ -82,8 +86,11 @@ type CompanyDetailClientProps = {
   companyAdminEmail: string | null;
   /** Application User ID of the company admin (e.g. acme.admin). */
   companyAdminUsername: string | null;
-  /** Auth-derived: "none" | "pending" | "confirmed" (not profiles.is_active). */
-  adminState: "none" | "pending" | "confirmed";
+  /**
+   * Honest account status (Phase 24.8): none | setup_pending | active |
+   * suspended | invited. Never "active" merely because a profile exists.
+   */
+  adminSetupState: AccountStatus;
 };
 
 const SUB_STATUS_PILL: Record<string, string> = {
@@ -138,7 +145,7 @@ export function CompanyDetailClient({
   plans,
   companyAdminEmail,
   companyAdminUsername,
-  adminState,
+  adminSetupState,
 }: CompanyDetailClientProps) {
   const router = useRouter();
 
@@ -162,6 +169,13 @@ export function CompanyDetailClient({
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminSuccess, setAdminSuccess] = useState<string | null>(null);
   const [diag, setDiag] = useState<InviteDiagnosticResult | null>(null);
+  // One-time temporary credentials returned by invite/reset actions.
+  const [credentials, setCredentials] = useState<{
+    username: string;
+    email: string;
+    temporaryPassword: string;
+    title?: string;
+  } | null>(null);
 
   // Account status (archive / reactivate).
   const [togglingActive, setTogglingActive] = useState(false);
@@ -304,12 +318,19 @@ export function CompanyDetailClient({
     setInviting(true);
     setAdminError(null);
     setAdminSuccess(null);
+    setCredentials(null);
     const result = await inviteCompanyAdmin(company.id, adminEmail.trim());
     if (!result.ok) setAdminError(result.error);
     else {
       setAdminSuccess(
-        "Invitation sent. The company admin will receive an email to set up their account.",
+        "Company admin account created. The temporary password is shown below — the first login requires changing it.",
       );
+      setCredentials({
+        username: result.data.username ?? "",
+        email: result.data.email,
+        temporaryPassword: result.data.temporaryPassword,
+        title: "Company admin account created",
+      });
       setAdminEmail("");
       setDiag(null);
       router.refresh();
@@ -321,12 +342,35 @@ export function CompanyDetailClient({
     setResending(true);
     setAdminError(null);
     setAdminSuccess(null);
+    setCredentials(null);
     const result = await resendCompanyAdminInvite(company.id);
     if (!result.ok) setAdminError(result.error);
     else {
       setAdminSuccess(
         "Invitation resent. The company admin will receive a new email.",
       );
+      router.refresh();
+    }
+    setResending(false);
+  };
+
+  const handleResetAdmin = async () => {
+    setResending(true);
+    setAdminError(null);
+    setAdminSuccess(null);
+    setCredentials(null);
+    const result = await resetCompanyAdminPassword(company.id);
+    if (!result.ok) setAdminError(result.error);
+    else {
+      setAdminSuccess(
+        "A new temporary password was issued. The previous password no longer works — the first login requires changing it.",
+      );
+      setCredentials({
+        username: result.data.username ?? "",
+        email: result.data.email,
+        temporaryPassword: result.data.temporaryPassword,
+        title: "Password reset — temporary password",
+      });
       router.refresh();
     }
     setResending(false);
@@ -375,14 +419,17 @@ export function CompanyDetailClient({
   };
 
   // Heuristic for disabling the delete button in the UI; the server action
-  // is the authoritative guard and checks every business table.
+  // is the authoritative guard and checks every business table. User
+  // accounts (admin/staff) do NOT block deletion — they are removed with
+  // the company. Only ERP business data blocks.
   const hasVisibleBusinessData =
     usage.products > 0 ||
     usage.marketplaces > 0 ||
     usage.sellerAccounts > 0 ||
-    usage.monthlyOrders > 0 ||
-    usage.staff > 0 ||
-    adminState !== "none";
+    usage.monthlyOrders > 0;
+
+  // Server-side protection is authoritative; this mirrors it for the UI.
+  const isProtectedCompany = company.slug === "sbbt-demo";
 
   const initials = company.name
     .split(/\s+/)
@@ -732,67 +779,7 @@ export function CompanyDetailClient({
           </div>
         </div>
 
-        {adminState === "confirmed" ? (
-          <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl border border-emerald-200/70 bg-emerald-50/50 p-4 dark:border-emerald-400/20 dark:bg-emerald-950/30">
-            <span className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-              <CheckCircle2 className="size-5" />
-            </span>
-            <div>
-              <p className="text-sm font-medium">Company Admin assigned</p>
-              <p className="font-mono text-sm text-foreground">
-                {companyAdminUsername ?? "—"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {companyAdminEmail ?? "Admin account"}
-              </p>
-            </div>
-            <span className="status-pill status-pill-success">Active</span>
-          </div>
-        ) : adminState === "pending" ? (
-          <div className="mt-4 space-y-4">
-            <div className="flex flex-wrap items-center gap-4 rounded-xl border border-amber-200/70 bg-amber-50/50 p-4 dark:border-amber-400/20 dark:bg-amber-950/30">
-              <span className="flex size-9 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
-                <AlertTriangle className="size-5" />
-              </span>
-              <div>
-                <p className="text-sm font-medium">Invitation pending</p>
-                <p className="font-mono text-sm text-foreground">
-                  {companyAdminUsername ?? "—"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {companyAdminEmail ?? "The invited admin"} has not accepted
-                  the invitation yet.
-                </p>
-              </div>
-              <span className="status-pill status-pill-warning">Pending</span>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Button
-                onClick={handleResendAdmin}
-                disabled={resending}
-                className="gap-1.5 sm:self-start"
-              >
-                <RefreshCcw className="size-4" />
-                {resending ? "Sending…" : "Resend invitation"}
-              </Button>
-            </div>
-
-            {adminError ? (
-              <p className="text-sm text-destructive" role="alert">
-                {adminError}
-              </p>
-            ) : null}
-            {adminSuccess ? (
-              <p
-                className="text-sm text-emerald-600 dark:text-emerald-500"
-                role="status"
-              >
-                {adminSuccess}
-              </p>
-            ) : null}
-          </div>
-        ) : (
+        {adminSetupState === "none" ? (
           <div className="mt-4 space-y-4">
             <div className="flex items-start gap-3 rounded-xl border border-amber-200/70 bg-amber-50/50 p-4 dark:border-amber-400/20 dark:bg-amber-950/30">
               <span className="flex size-9 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
@@ -881,6 +868,132 @@ export function CompanyDetailClient({
                 </div>
               </div>
             ) : null}
+            {adminError ? (
+              <p className="text-sm text-destructive" role="alert">
+                {adminError}
+              </p>
+            ) : null}
+            {adminSuccess ? (
+              <p className="text-sm text-emerald-600 dark:text-emerald-500" role="status">
+                {adminSuccess}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-4 space-y-4">
+            {/* Status card — honest account state, never "Active" merely
+                because a profile exists. */}
+            {(() => {
+              const meta =
+                adminSetupState === "active"
+                  ? {
+                      label: "Active",
+                      pill: "status-pill-success",
+                      icon: CheckCircle2,
+                      iconWrap:
+                        "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
+                      text: "Password setup is complete — the admin can sign in.",
+                    }
+                  : adminSetupState === "suspended"
+                    ? {
+                        label: "Suspended",
+                        pill: "status-pill-danger",
+                        icon: Ban,
+                        iconWrap:
+                          "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
+                        text: "This admin's account is deactivated and cannot sign in.",
+                      }
+                    : adminSetupState === "invited"
+                      ? {
+                          label: "Invitation pending",
+                          pill: "status-pill-warning",
+                          icon: AlertTriangle,
+                          iconWrap:
+                            "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+                          text: "An invitation email was sent but has not been confirmed.",
+                        }
+                      : {
+                          label: "Setup pending",
+                          pill: "status-pill-warning",
+                          icon: AlertTriangle,
+                          iconWrap:
+                            "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+                          text: "The account exists but the admin has not set a personal password yet.",
+                        };
+              const Icon = meta.icon;
+              return (
+                <div
+                  className={cn(
+                    "flex flex-wrap items-center gap-4 rounded-xl border p-4",
+                    adminSetupState === "active"
+                      ? "border-emerald-200/70 bg-emerald-50/50 dark:border-emerald-400/20 dark:bg-emerald-950/30"
+                      : adminSetupState === "suspended"
+                        ? "border-red-200/70 bg-red-50/50 dark:border-red-400/20 dark:bg-red-950/30"
+                        : "border-amber-200/70 bg-amber-50/50 dark:border-amber-400/20 dark:bg-amber-950/30",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-9 items-center justify-center rounded-full",
+                      meta.iconWrap,
+                    )}
+                  >
+                    <Icon className="size-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">
+                      {companyAdminUsername ?? "Company Admin"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {companyAdminEmail ?? "Admin account"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{meta.text}</p>
+                  </div>
+                  <span className={cn("status-pill", meta.pill)}>
+                    {meta.label}
+                  </span>
+                </div>
+              );
+            })()}
+
+            {/* Actions */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={handleResetAdmin}
+                disabled={resending}
+                variant="outline"
+                className="gap-1.5"
+              >
+                <KeyRound className="size-4" />
+                {resending ? "Resetting…" : "Reset password"}
+              </Button>
+              {adminSetupState === "invited" ? (
+                <Button
+                  onClick={handleResendAdmin}
+                  disabled={resending}
+                  variant="ghost"
+                  className="gap-1.5"
+                >
+                  <RefreshCcw className="size-4" />
+                  {resending ? "Sending…" : "Resend invitation"}
+                </Button>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Reset password issues a new temporary password (shown once) and
+              forces a password change on the next login. The old password
+              stops working immediately.
+            </p>
+
+            {credentials ? (
+              <TemporaryCredentials
+                title={credentials.title ?? "Temporary password"}
+                username={credentials.username}
+                email={credentials.email}
+                temporaryPassword={credentials.temporaryPassword}
+              />
+            ) : null}
+
             {adminError ? (
               <p className="text-sm text-destructive" role="alert">
                 {adminError}
@@ -1035,7 +1148,13 @@ export function CompanyDetailClient({
           </div>
         </div>
         <div className="mt-4 rounded-xl border border-red-200/70 bg-red-50/40 p-4 dark:border-red-400/20 dark:bg-red-950/20">
-          {hasVisibleBusinessData ? (
+          {isProtectedCompany ? (
+            <p className="text-sm text-muted-foreground">
+              <span className="status-pill status-pill-neutral">Protected company</span>{" "}
+              This demo tenant is protected and cannot be permanently deleted
+              (server-enforced). You can archive it if needed.
+            </p>
+          ) : hasVisibleBusinessData ? (
             <p className="text-sm text-muted-foreground">
               This company contains business data, so it cannot be permanently
               deleted. Archive the company instead — no data is removed.
@@ -1043,7 +1162,8 @@ export function CompanyDetailClient({
           ) : (
             <p className="text-sm text-muted-foreground">
               This company has no business data and can be permanently deleted.
-              This cannot be undone.
+              Its user accounts (admin/staff) will also be permanently
+              removed. This cannot be undone.
             </p>
           )}
           <AlertDialog>
@@ -1051,20 +1171,20 @@ export function CompanyDetailClient({
               <Button
                 variant="outline"
                 size="sm"
-                disabled={hasVisibleBusinessData}
+                disabled={isProtectedCompany || hasVisibleBusinessData}
                 className="mt-3 gap-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 className="size-4" />
-                Delete Company
+                {isProtectedCompany ? "Protected Company" : "Delete Company"}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Permanently delete {company.name}?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This permanently deletes the company and its subscription.
-                  This cannot be undone. The server will refuse if any
-                  business data exists. Type{" "}
+                  This permanently deletes the company, its subscription, and
+                  its user accounts (admin/staff). This cannot be undone. The
+                  server will refuse if any business data exists. Type{" "}
                   <span className="font-mono font-semibold text-foreground">
                     {company.name}
                   </span>{" "}

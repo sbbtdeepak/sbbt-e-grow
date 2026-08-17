@@ -19,6 +19,44 @@ export const INVITE_PENDING_META_KEY = "__pending_invite";
 
 export type CompanyAdminState = "none" | "pending" | "confirmed";
 
+/**
+ * Honest account status for a company user (Phase 24.8).
+ *
+ * NEVER inferred from profile existence alone:
+ *  - none          — no auth user / profile exists
+ *  - suspended     — profile is_active = false (account disabled)
+ *  - setup_pending — account exists but password setup is not complete
+ *                    (durable gate armed — created with a temporary
+ *                    password, or invite accepted before setting one)
+ *  - invited       — legacy invitation email flow: invite sent, email not
+ *                    yet confirmed (resend eligibility)
+ *  - active        — password setup complete, account usable
+ */
+export type AccountStatus =
+  | "none"
+  | "setup_pending"
+  | "active"
+  | "suspended"
+  | "invited";
+
+/**
+ * Resolve the honest account status from real Auth state + profile state.
+ * The durable pending-password gate takes precedence over confirmed_at:
+ * an account can be email-confirmed (invite accepted / email_confirm=true)
+ * while still awaiting its first password — that is NOT "active".
+ */
+export function resolveAccountStatus(
+  user: AuthUserLike | null,
+  profileActive: boolean,
+): AccountStatus {
+  if (!user) return "none";
+  if (!profileActive) return "suspended";
+  if (hasPendingPasswordGate(user)) return "setup_pending";
+  // Legacy email-invite flow: invited but not yet confirmed (resend path).
+  if (user.invited_at && !user.confirmed_at) return "invited";
+  return "active";
+}
+
 /** Minimal shape of a GoTrue user needed for state resolution. */
 export type AuthUserLike = {
   invited_at?: string | null;

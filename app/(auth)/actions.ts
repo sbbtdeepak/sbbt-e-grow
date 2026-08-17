@@ -15,7 +15,10 @@ import {
   type LoginState,
   type ResetPasswordState,
 } from "@/lib/validations/auth";
-import { clearPendingPasswordMeta } from "@/lib/auth/invite-state";
+import {
+  clearPendingPasswordMeta,
+  INVITE_PENDING_META_KEY,
+} from "@/lib/auth/invite-state";
 import { isEmailIdentifier } from "@/lib/auth/usernames";
 
 /**
@@ -80,7 +83,7 @@ export async function signInAction(
     // username enumeration, uniform timing.
   }
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -89,6 +92,17 @@ export async function signInAction(
     // Generic message — never leak Supabase auth internals to visitors and
     // never reveal whether the User ID / email exists.
     return { message: "Unable to sign in. Please check your User ID and password." };
+  }
+
+  // First login with a temporary password: the durable pending-password
+  // gate (set at account creation / reset) is still armed, so route the
+  // user straight to the mandatory /set-password step before the ERP. The
+  // app shell also enforces this (layout redirect), this just avoids a
+  // double hop. Reading user_metadata from the sign-in response keeps the
+  // redirect decision independent of cookie freshness.
+  if (data.user?.user_metadata?.[INVITE_PENDING_META_KEY] === true) {
+    revalidatePath("/", "layout");
+    redirect("/set-password");
   }
 
   revalidatePath("/", "layout");

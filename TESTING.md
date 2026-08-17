@@ -261,6 +261,7 @@ node Scripts/check-invite-redirect.mjs
 node Scripts/check-invite-redirect.mjs --production   # fails unless prod origin configured
 node Scripts/check-lifecycle.mjs                       # invitation state machine
 node Scripts/check-usernames.mjs                       # User ID generation
+node Scripts/check-passwords.mjs                       # temp passwords + account status (24.8)
 ```
 
 ## 10C. User ID identity + login (Phase 24.6)
@@ -331,6 +332,34 @@ limits — do not spam invites):
 # 4. Log out → /login → email + password → dashboard
 # 5. Master detail page: pending admin shows "Invitation pending" + Resend
 #    (before acceptance), "Active" (after acceptance/confirmation)
+```
+
+### Phase 24.8 — Account credential lifecycle
+
+Company accounts are now created with a **server-generated temporary
+password** (admin `createUser` with `email_confirm: true`) — no invitation
+email dependency, no dependence on Supabase's hosted email quota. The
+plaintext is shown ONCE to the authorized creator (Master / Company Admin)
+and never stored; the first login is forced through `/set-password` via the
+durable `user_metadata.__pending_invite` gate, which is cleared when the
+password is set.
+
+Honest account status (never inferred from profile existence):
+
+| Status | Meaning |
+|---|---|
+| `setup_pending` | Account exists, password setup not complete (gate armed) |
+| `active` | Password setup complete, can sign in |
+| `suspended` | `profiles.is_active = false` |
+| `invited` | Legacy email-invite pending (resend available) |
+
+Recovery actions: **Reset password** (Master for the company admin, Company
+Admin for staff) generates a new temporary password, invalidates the old one
+immediately, re-arms the gate, and shows the password once. Login accepts
+User ID or email; password fields have local-only show/hide toggles.
+
+```bash
+node Scripts/check-passwords.mjs   # temp password shape/uniqueness + status matrix
 ```
 
 ---

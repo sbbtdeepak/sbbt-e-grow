@@ -41,7 +41,7 @@ export default async function CompanyDetailPage({
           hasCompanyAdmin={detail.data.hasCompanyAdmin}
           companyAdminEmail={detail.data.companyAdminEmail}
           companyAdminUsername={detail.data.companyAdminUsername}
-          adminState={detail.data.adminState}
+          adminSetupState={detail.data.adminSetupState}
         />
       </Suspense>
     </div>
