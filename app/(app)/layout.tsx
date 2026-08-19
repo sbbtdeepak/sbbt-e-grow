@@ -34,8 +34,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     redirect("/set-password");
   }
 
+  const isMaster = ctx.role === "master_admin";
   let perms: Record<string, boolean> = {};
-  if (isStaff) {
+  if (!isMaster) {
     perms = await getUserPermissions();
   }
 

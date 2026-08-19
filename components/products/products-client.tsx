@@ -63,7 +63,7 @@ function ProductFormFields({ product }: { product?: ProductRow }) {
         />
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="buyingPrice">Buying Price (₹) *</Label>
+        <Label htmlFor="buyingPrice">Buying / Input Price (₹) *</Label>
         <Input
           id="buyingPrice"
           name="buyingPrice"
@@ -71,6 +71,19 @@ function ProductFormFields({ product }: { product?: ProductRow }) {
           step="0.01"
           min="0"
           defaultValue={product?.buying_price ?? ""}
+          placeholder="0.00"
+          required
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="sellingPrice">Default Selling / Output Price (₹) *</Label>
+        <Input
+          id="sellingPrice"
+          name="sellingPrice"
+          type="number"
+          step="0.01"
+          min="0"
+          defaultValue={product?.selling_price ?? ""}
           placeholder="0.00"
           required
         />
@@ -110,6 +123,7 @@ const toProductInput = (formData: FormData): ProductInput => ({
   sku: String(formData.get("sku") ?? ""),
   name: String(formData.get("name") ?? ""),
   buyingPrice: Number(formData.get("buyingPrice") ?? 0),
+  sellingPrice: Number(formData.get("sellingPrice") ?? 0),
   category: formData.get("category")
     ? String(formData.get("category"))
     : null,
@@ -139,7 +153,7 @@ function ProductDialog({
       description={
         product
           ? "Update the product details."
-          : "Buying price only — selling price is entered at order time."
+          : "Set buying and default selling prices. Selling price is editable per order."
       }
       trigger={
         <Button size="sm" variant={product ? "ghost" : "default"}>
@@ -188,7 +202,7 @@ export function ProductsClient({
     <div className="flex flex-col gap-6 p-6">
       <PageHeader
         title="Products"
-        description="Product master with SKU, buying price, category and status."
+        description="Product master with SKU, buying/selling price, category and status."
         actions={
           <>
             <UsageMeter stat={usage} />
@@ -237,6 +251,7 @@ export function ProductsClient({
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
               <TableHead className="text-right">Buying Price</TableHead>
+              <TableHead className="text-right">Selling Price</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -263,6 +278,11 @@ export function ProductsClient({
                   <TableCell>{product.category ?? "—"}</TableCell>
                   <TableCell className="text-right">
                     ₹{Number(product.buying_price).toLocaleString("en-IN")}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {product.selling_price != null
+                      ? `\u20B9${Number(product.selling_price).toLocaleString("en-IN")}`
+                      : "—"}
                   </TableCell>
                   <TableCell>
                     <Badge

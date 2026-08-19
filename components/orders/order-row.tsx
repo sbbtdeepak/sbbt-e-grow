@@ -82,6 +82,7 @@ function OrderRowBase({
       productSku: product.sku,
       productName: product.name,
       buyingPrice: String(product.buyingPrice),
+      sellingPrice: product.sellingPrice != null ? String(product.sellingPrice) : row.sellingPrice,
     });
     // Immediately focus the quantity cell for rapid entry.
     requestAnimationFrame(() => {
@@ -148,7 +149,7 @@ function OrderRowBase({
         />
       </td>
 
-      {/* Selling Price (manual) */}
+      {/* Selling Price (default from Product Master, editable per order) */}
       <td className="p-1">
         <Input
           data-order-cell="true"

@@ -239,6 +239,7 @@ export type Database = {
           sku: string;
           name: string;
           buying_price: number;
+          selling_price: number | null;
           category: string | null;
           image_url: string | null;
           status: ProductStatus;
@@ -249,6 +250,7 @@ export type Database = {
           sku: string;
           name: string;
           buying_price: number;
+          selling_price?: number | null;
           category?: string | null;
           image_url?: string | null;
           status?: ProductStatus;
@@ -262,6 +264,7 @@ export type Database = {
           sku?: string;
           name?: string;
           buying_price?: number;
+          selling_price?: number | null;
           category?: string | null;
           image_url?: string | null;
           status?: ProductStatus;

@@ -24,6 +24,7 @@ export type ProductOption = {
   sku: string;
   name: string;
   buyingPrice: number;
+  sellingPrice: number | null;
 };
 
 type ProductComboboxProps = {

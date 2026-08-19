@@ -48,6 +48,7 @@ export default async function OrdersPage() {
     sku: p.sku,
     name: p.name,
     buyingPrice: Number(p.buying_price),
+    sellingPrice: p.selling_price != null ? Number(p.selling_price) : null,
   }));
 
   return (

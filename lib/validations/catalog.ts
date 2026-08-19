@@ -18,6 +18,9 @@ export const productSchema = z.object({
   buyingPrice: z.coerce
     .number({ invalid_type_error: "Buying price must be a number." })
     .min(0, "Buying price cannot be negative."),
+  sellingPrice: z.coerce
+    .number({ invalid_type_error: "Selling price must be a number." })
+    .min(0, "Selling price cannot be negative."),
   category: z
     .string()
     .trim()
@@ -26,9 +29,10 @@ export const productSchema = z.object({
     .nullable()
     .transform((v) => (v ? v : null)),
   imageUrl: z
-    .string()
-    .url("Image URL must be a valid URL.")
-    .max(500, "Image URL is too long.")
+    .preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+      z.string().url("Image URL must be a valid URL.").max(500, "Image URL is too long.").nullable(),
+    )
     .optional()
     .nullable()
     .transform((v) => (v ? v : null)),
