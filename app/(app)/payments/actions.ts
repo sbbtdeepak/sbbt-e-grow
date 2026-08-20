@@ -11,11 +11,17 @@ import {
 } from "@/lib/validations/order";
 import type { ActionResult } from "@/lib/validations/catalog";
 import { mapDbError } from "@/lib/saas/db-errors";
+import { calculateNetExpectedPayment } from "@/lib/payment";
 
 /**
  * Create expected payment record for a delivered order.
  * Auto-calculates expected_payment_date = delivery_date + payment_release_days.
- * Amounts are set from the order's total_sale. Status = expected.
+ * Expected payment is calculated using the shared outcome-aware
+ * calculateNetExpectedPayment helper based on:
+ *   - delivered_qty × selling_price
+ *   - minus returned_qty × return_charge_per_unit
+ *   - RTO contributes ₹0
+ *   - Cancelled contributes ₹0
  */
 export async function createExpectedPayment(
   input: PaymentConfirmInput,
@@ -59,16 +65,27 @@ export async function createExpectedPayment(
     };
   }
 
-  // Get order items total sale for expected amount.
+  // Calculate expected amount using the same outcome-aware formula
+  // used by delivery confirmation and settlement updates.
+  // Formula: SUM(delivered_qty × selling_price) - SUM(returned_qty × return_charge_per_unit)
   const { data: items, error: itemsError } = await supabase
     .from("order_items")
-    .select("total_sale")
+    .select("delivered_qty, returned_qty, rto_qty, cancelled_qty, return_charge_per_unit, selling_price")
     .eq("order_id", order.id)
     .eq("company_id", ctx.companyId);
 
   if (itemsError) return { ok: false, error: mapDbError(itemsError) };
 
-  const amountExpected = items?.reduce((sum, i) => sum + (i.total_sale || 0), 0) || 0;
+  const amountExpected = calculateNetExpectedPayment(
+    items?.map((i) => ({
+      delivered_qty: Number(i.delivered_qty),
+      returned_qty: Number(i.returned_qty),
+      rto_qty: Number(i.rto_qty),
+      cancelled_qty: Number(i.cancelled_qty),
+      return_charge_per_unit: Number(i.return_charge_per_unit),
+      selling_price: Number(i.selling_price),
+    })) ?? [],
+  );
   const amountReceived = parsed.data.amountReceived || 0;
 
   let status: "expected" | "partial" | "received" | "pending" | "cancelled" = "expected";
