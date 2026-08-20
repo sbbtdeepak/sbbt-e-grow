@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useRef } from "react";
+import { memo } from "react";
 
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,25 +9,30 @@ export type DeliveryLineDraft = {
   orderItemId: string;
   productSku: string;
   productName: string;
+  sellingPrice: number;
   orderedQty: number;
   buyQty: number;
   packedQty: number;
   dispatchQty: number;
   deliveredQty: string;
-  deliveryStatus: string;
+  returnedQty: string;
+  rtoQty: string;
+  cancelledQty: string;
+  returnChargePerUnit: string;
   deliveryReference: string;
   deliveryDate: string;
   deliveryNotes: string;
   selected: boolean;
 };
 
-export const DELIVERY_STATUS_LABELS: Record<string, string> = {
-  Delivered: "Delivered",
-  Partial: "Partial",
-  Cancelled: "Cancelled",
-  Returned: "Returned",
-  RTO: "RTO",
-};
+function fmtINR(value: number): string {
+  return value.toLocaleString("en-IN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
+
 
 type DeliveryRowProps = {
   line: DeliveryLineDraft;
@@ -38,22 +43,19 @@ type DeliveryRowProps = {
 function DeliveryRowBase({ line, onChange, onToggle }: DeliveryRowProps) {
   const dispatch = Number(line.dispatchQty) || 0;
   const delivered = Number(line.deliveredQty) || 0;
-  const pendingDelivery = Math.max(0, dispatch - delivered);
+  const returned = Number(line.returnedQty) || 0;
+  const rto = Number(line.rtoQty) || 0;
+  const cancelled = Number(line.cancelledQty) || 0;
+  const totalAccounted = delivered + returned + rto + cancelled;
+  const remaining = Math.max(0, dispatch - totalAccounted);
+  const isOverDispatch = totalAccounted > dispatch;
 
-  const deliveredRef = useRef<HTMLInputElement>(null);
-  const statusRef = useRef<HTMLInputElement>(null);
-  const referenceRef = useRef<HTMLInputElement>(null);
+  const returnCharge = Number(line.returnChargePerUnit) || 0;
 
-  const handleKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>,
-    nextRef?: React.RefObject<HTMLInputElement | null>,
-  ) => {
-    if (e.key === "Enter" && nextRef && nextRef.current) {
-      e.preventDefault();
-      nextRef.current.focus();
-      nextRef.current.select();
-    }
-  };
+  // Financial preview
+  const deliveredRevenue = delivered * line.sellingPrice;
+  const returnDeduction = returned * returnCharge;
+  const netContribution = deliveredRevenue - returnDeduction;
 
   return (
     <tr className="border-b border-border hover:bg-muted/40">
@@ -81,100 +83,131 @@ function DeliveryRowBase({ line, onChange, onToggle }: DeliveryRowProps) {
       {/* Ordered Qty */}
       <td className="p-1 text-right text-sm tabular-nums">{line.orderedQty}</td>
 
-      {/* Buy Qty */}
-      <td className="p-1 text-right text-sm tabular-nums">{line.buyQty}</td>
-
       {/* Packed Qty */}
       <td className="p-1 text-right text-sm tabular-nums">{line.packedQty}</td>
 
       {/* Dispatch Qty */}
-      <td className="p-1 text-right text-sm tabular-nums">{dispatch}</td>
+      <td className="p-1 text-right text-sm tabular-nums font-medium">{dispatch}</td>
 
-      {/* Delivered Qty (editable) */}
+      {/* Delivered Qty — integer only */}
       <td className="p-1">
         <Input
-          ref={deliveredRef}
-          data-delivery-cell="true"
           type="number"
-          inputMode="decimal"
+          inputMode="numeric"
           min="0"
-          step="0.01"
+          max={dispatch}
+          step="1"
           value={line.deliveredQty}
           onChange={(e) => onChange(line.orderItemId, { deliveredQty: e.target.value })}
-          onKeyDown={(e) => handleKeyDown(e, statusRef)}
-          className="w-24 text-right"
+          className="w-20 text-right"
           placeholder="0"
           aria-label={`Delivered qty for ${line.productName}`}
         />
       </td>
 
-      {/* Pending Delivery */}
+      {/* Returned Qty — integer only */}
+      <td className="p-1">
+        <Input
+          type="number"
+          inputMode="numeric"
+          min="0"
+          max={dispatch}
+          step="1"
+          value={line.returnedQty}
+          onChange={(e) => onChange(line.orderItemId, { returnedQty: e.target.value })}
+          className="w-20 text-right"
+          placeholder="0"
+          aria-label={`Returned qty for ${line.productName}`}
+        />
+      </td>
+
+      {/* RTO Qty — integer only */}
+      <td className="p-1">
+        <Input
+          type="number"
+          inputMode="numeric"
+          min="0"
+          max={dispatch}
+          step="1"
+          value={line.rtoQty}
+          onChange={(e) => onChange(line.orderItemId, { rtoQty: e.target.value })}
+          className="w-20 text-right"
+          placeholder="0"
+          aria-label={`RTO qty for ${line.productName}`}
+        />
+      </td>
+
+      {/* Cancelled Qty — integer only */}
+      <td className="p-1">
+        <Input
+          type="number"
+          inputMode="numeric"
+          min="0"
+          max={dispatch}
+          step="1"
+          value={line.cancelledQty}
+          onChange={(e) => onChange(line.orderItemId, { cancelledQty: e.target.value })}
+          className="w-20 text-right"
+          placeholder="0"
+          aria-label={`Cancelled qty for ${line.productName}`}
+        />
+      </td>
+
+      {/* Remaining / Over */}
       <td
         className={`p-1 text-right text-sm tabular-nums ${
-          pendingDelivery > 0 ? "text-amber-600" : "text-muted-foreground"
+          isOverDispatch
+            ? "text-destructive font-medium"
+            : remaining > 0
+            ? "text-amber-600 font-medium"
+            : "text-muted-foreground"
         }`}
       >
-        {pendingDelivery}
+        {isOverDispatch ? `Over: ${totalAccounted - dispatch}` : remaining}
       </td>
 
-      {/* Delivery Status (editable) */}
+      {/* Return Charge Per Unit — money field */}
       <td className="p-1">
         <Input
-          ref={statusRef}
-          data-delivery-cell="true"
-          type="text"
-          list={`status-${line.orderItemId}`}
-          value={line.deliveryStatus}
-          onChange={(e) => onChange(line.orderItemId, { deliveryStatus: e.target.value })}
-          onKeyDown={(e) => handleKeyDown(e, referenceRef)}
-          className="w-32 text-sm"
-          placeholder="Status"
-          aria-label={`Delivery status for ${line.productName}`}
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          value={line.returnChargePerUnit}
+          onChange={(e) => onChange(line.orderItemId, { returnChargePerUnit: e.target.value })}
+          className="w-24 text-right"
+          placeholder="0.00"
+          aria-label={`Return charge per unit for ${line.productName}`}
+          disabled={returned === 0}
         />
-        <datalist id={`status-${line.orderItemId}`}>
-          {Object.keys(DELIVERY_STATUS_LABELS).map((status) => (
-            <option key={status} value={status} />
-          ))}
-        </datalist>
       </td>
 
-      {/* Delivery Reference (editable) */}
+      {/* Delivery Reference */}
       <td className="p-1">
         <Input
-          ref={referenceRef}
-          data-delivery-cell="true"
           type="text"
           value={line.deliveryReference}
           onChange={(e) => onChange(line.orderItemId, { deliveryReference: e.target.value })}
-          className="w-36 text-sm font-mono"
+          className="w-32 text-sm font-mono"
           placeholder="Reference"
           aria-label={`Delivery reference for ${line.productName}`}
         />
       </td>
 
-      {/* Delivery Date (editable) */}
+      {/* Delivery Date */}
       <td className="p-1">
         <Input
-          data-delivery-cell="true"
           type="date"
           value={line.deliveryDate}
           onChange={(e) => onChange(line.orderItemId, { deliveryDate: e.target.value })}
-          className="w-36"
+          className="w-32"
           aria-label={`Delivery date for ${line.productName}`}
         />
       </td>
 
-      {/* Delivery Notes (editable) */}
-      <td className="p-1">
-        <Input
-          data-delivery-cell="true"
-          type="text"
-          value={line.deliveryNotes}
-          onChange={(e) => onChange(line.orderItemId, { deliveryNotes: e.target.value })}
-          className="w-48 text-sm"
-          placeholder="Delivery notes…"
-          aria-label={`Delivery notes for ${line.productName}`}
-        />
+      {/* Net Contribution (read-only) */}
+      <td className={`p-1 text-right text-sm tabular-nums font-medium ${netContribution < 0 ? "text-destructive" : ""}`}>
+        {fmtINR(netContribution)}
       </td>
     </tr>
   );

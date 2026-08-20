@@ -52,10 +52,10 @@ export async function createExpectedPayment(
 
   if (orderError) return { ok: false, error: mapDbError(orderError) };
   if (!order) return { ok: false, error: "Order not found." };
-  if (order.stage !== "delivery") {
+  if (order.stage !== "delivery" && order.stage !== "completed") {
     return {
       ok: false,
-      error: "Only delivery stage orders can have expected payments.",
+      error: "Only delivery or completed stage orders can have expected payments.",
     };
   }
 

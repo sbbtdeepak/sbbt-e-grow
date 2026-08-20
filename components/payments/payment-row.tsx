@@ -36,7 +36,17 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-red-100 text-red-800",
 };
 
+function fmtINR(value: number): string {
+  return value.toLocaleString("en-IN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
 function PaymentRowBase({ line, onToggle }: PaymentRowProps) {
+  const isNegative = line.expectedAmount < 0;
+  const isZero = line.expectedAmount === 0;
+
   return (
     <tr className="border-b border-border hover:bg-muted/40">
       <td className="p-1 text-center">
@@ -53,12 +63,34 @@ function PaymentRowBase({ line, onToggle }: PaymentRowProps) {
       <td className="p-1 text-sm">{line.seller}</td>
       <td className="p-1 text-sm tabular-nums">{line.deliveryDate}</td>
       <td className="p-1 text-sm tabular-nums">{line.expectedDate}</td>
-      <td className="p-1 text-right text-sm tabular-nums">{line.expectedAmount.toFixed(2)}</td>
-      <td className="p-1 text-right text-sm tabular-nums">{line.receivedAmount.toFixed(2)}</td>
-      <td className="p-1 text-right text-sm tabular-nums font-medium">{line.pendingAmount.toFixed(2)}</td>
+      <td className="p-1 text-right text-sm tabular-nums">
+        {isZero ? (
+          <span className="text-muted-foreground">No Payment</span>
+        ) : isNegative ? (
+          <span className="text-destructive font-medium">₹{fmtINR(Math.abs(line.expectedAmount))}</span>
+        ) : (
+          <span className="text-foreground">₹{fmtINR(line.expectedAmount)}</span>
+        )}
+      </td>
+      <td className="p-1 text-right text-sm tabular-nums">
+        ₹{fmtINR(line.receivedAmount)}
+      </td>
+      <td className="p-1 text-right text-sm tabular-nums font-medium">
+        {isNegative ? (
+          <span className="text-destructive">₹{fmtINR(Math.abs(line.pendingAmount))}</span>
+        ) : (
+          <span>₹{fmtINR(line.pendingAmount)}</span>
+        )}
+      </td>
       <td className="p-1">
-        <Badge className={STATUS_COLORS[line.status] || "bg-gray-100 text-gray-800"}>
-          {line.status}
+        <Badge className={
+          isNegative
+            ? "bg-red-100 text-red-800"
+            : isZero
+            ? "bg-gray-100 text-gray-800"
+            : STATUS_COLORS[line.status] || "bg-gray-100 text-gray-800"
+        }>
+          {isNegative ? "Expected Deduction" : isZero ? "Settled" : line.status}
         </Badge>
       </td>
       <td className="p-1 text-sm">{line.paymentMethod}</td>

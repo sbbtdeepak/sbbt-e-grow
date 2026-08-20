@@ -30,7 +30,7 @@ export type BaseEntity = {
 export type UserRole = "master_admin" | "company_admin" | "staff";
 
 /** Order lifecycle stages. */
-export type OrderStage = "entry" | "purchase" | "packing" | "dispatch" | "delivery";
+export type OrderStage = "entry" | "purchase" | "packing" | "dispatch" | "delivery" | "completed";
 
 /** Payment status for a settled/expected payment. */
 export type PaymentStatus = "expected" | "received" | "partial" | "pending" | "cancelled";
@@ -290,6 +290,7 @@ export type Database = {
           seller_account_id: string;
           stage: OrderStage;
           notes: string | null;
+          delivery_confirmed_at: string | null;
         };
         Insert: {
           id?: string;
@@ -299,6 +300,7 @@ export type Database = {
           seller_account_id: string;
           stage?: OrderStage;
           notes?: string | null;
+          delivery_confirmed_at?: string | null;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
@@ -311,6 +313,7 @@ export type Database = {
           seller_account_id?: string;
           stage?: OrderStage;
           notes?: string | null;
+          delivery_confirmed_at?: string | null;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
@@ -365,6 +368,10 @@ export type Database = {
           delivery_notes: string | null;
           delivery_status: string | null;
           delivery_reference: string | null;
+          returned_qty: number;
+          rto_qty: number;
+          cancelled_qty: number;
+          return_charge_per_unit: number;
         };
         Insert: {
           id?: string;
@@ -389,6 +396,10 @@ export type Database = {
           delivery_notes?: string | null;
           delivery_status?: string | null;
           delivery_reference?: string | null;
+          returned_qty?: number;
+          rto_qty?: number;
+          cancelled_qty?: number;
+          return_charge_per_unit?: number;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;
@@ -416,6 +427,10 @@ export type Database = {
           delivery_notes?: string | null;
           delivery_status?: string | null;
           delivery_reference?: string | null;
+          returned_qty?: number;
+          rto_qty?: number;
+          cancelled_qty?: number;
+          return_charge_per_unit?: number;
           created_at?: string;
           updated_at?: string;
           created_by?: string | null;

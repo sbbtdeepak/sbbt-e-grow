@@ -194,7 +194,23 @@ export const deliveryLineSchema = z.object({
   orderItemId: z.string().uuid("Invalid order item."),
   deliveredQty: z.coerce
     .number({ invalid_type_error: "Delivered qty must be a number." })
-    .min(0, "Delivered qty cannot be negative."),
+    .min(0, "Delivered qty cannot be negative.")
+    .int("Delivered qty must be a whole number."),
+  returnedQty: z.coerce
+    .number({ invalid_type_error: "Returned qty must be a number." })
+    .min(0, "Returned qty cannot be negative.")
+    .int("Returned qty must be a whole number."),
+  rtoQty: z.coerce
+    .number({ invalid_type_error: "RTO qty must be a number." })
+    .min(0, "RTO qty cannot be negative.")
+    .int("RTO qty must be a whole number."),
+  cancelledQty: z.coerce
+    .number({ invalid_type_error: "Cancelled qty must be a number." })
+    .min(0, "Cancelled qty cannot be negative.")
+    .int("Cancelled qty must be a whole number."),
+  returnChargePerUnit: z.coerce
+    .number({ invalid_type_error: "Return charge must be a number." })
+    .min(0, "Return charge cannot be negative."),
   deliveryStatus: deliveryStatusSchema.optional().nullable(),
   deliveryReference: z
     .string()

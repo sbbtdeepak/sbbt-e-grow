@@ -24,6 +24,7 @@ export type StageItem = {
   sku: string;
   name: string;
   referenceQty: number;
+  dispatchQty?: number;
 };
 
 export type StageOrder = {
@@ -42,12 +43,14 @@ export type StageValueField = {
   placeholder?: string;
   textarea?: boolean;
   options?: string[];
+  step?: "1" | "0.01";
 };
 
 export type StageSelected = {
   orderId: string;
   itemId: string;
   values: Record<string, string>;
+  meta?: Record<string, number>;
 };
 
 type StageViewProps = {
@@ -100,7 +103,7 @@ export function StageMobileView({ orders, title, confirmLabel, fields, initialVa
       for (const order of orders) {
         const lines = drafts[order.id] ? drafts[order.id] : [];
         lines.forEach((l, i) => {
-          if (l.selected) selected.push({ orderId: order.id, itemId: order.items[i].id, values: l.values });
+          if (l.selected) selected.push({ orderId: order.id, itemId: order.items[i].id, values: l.values, meta: { dispatchQty: order.items[i].dispatchQty ?? order.items[i].referenceQty } });
         });
       }
       const result = await buildPayload(selected);
@@ -196,9 +199,9 @@ export function StageMobileView({ orders, title, confirmLabel, fields, initialVa
                             ) : (
                               <Input
                                 type={field.type ? field.type : "text"}
-                                inputMode={field.type === "number" ? "decimal" : undefined}
+                                inputMode={field.type === "number" ? (field.step === "1" ? "numeric" : "decimal") : undefined}
                                 min={field.type === "number" ? "0" : undefined}
-                                step={field.type === "number" ? "0.01" : undefined}
+                                step={field.step ? field.step : (field.type === "number" ? "1" : undefined)}
                                 value={line.values[field.key] ? line.values[field.key] : ""}
                                 onChange={(e) =>
                                   patch(order.id, i, { values: { ...line.values, [field.key]: e.target.value } })

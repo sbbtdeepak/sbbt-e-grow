@@ -30,6 +30,37 @@ import type {
   DeliveryStatus,
 } from "@/lib/validations/order";
 
+// Helper: integer step for quantity fields, decimal step for money
+type FieldType = "number" | "text" | "date" | "select";
+type FieldStep = "1" | "0.01";
+
+function qtyField(key: string, label: string): StageValueField & { step: FieldStep } {
+  return { key, label, type: "number" as FieldType, placeholder: "0", step: "1" };
+}
+
+function moneyField(key: string, label: string): StageValueField & { step: FieldStep } {
+  return { key, label, type: "number" as FieldType, placeholder: "0.00", step: "0.01" };
+}
+
+// Helper: auto-derive delivery status from quantities
+function deriveDeliveryStatus(
+  delivered: number,
+  returned: number,
+  rto: number,
+  cancelled: number,
+  dispatch: number,
+): DeliveryStatus | null {
+  const total = delivered + returned + rto + cancelled;
+  if (total === 0) return null;
+  if (returned > 0 && delivered > 0) return "Partial";
+  if (returned > 0) return "Returned";
+  if (rto > 0 && delivered > 0) return "Partial";
+  if (rto === dispatch) return "RTO";
+  if (cancelled === dispatch) return "Cancelled";
+  if (delivered === dispatch) return "Delivered";
+  return "Partial";
+}
+
 // ------------------------------------------------------------
 // Purchase
 // ------------------------------------------------------------
@@ -198,14 +229,12 @@ export async function dispatchPayload(selected: StageSelected[]): Promise<{ ok: 
 // Delivery
 // ------------------------------------------------------------
 
-export const deliveryFields: StageValueField[] = [
-  { key: "deliveredQty", label: "Delivered Qty", type: "number", placeholder: "0" },
-  {
-    key: "deliveryStatus",
-    label: "Status",
-    type: "select",
-    options: ["Delivered", "Partial", "Cancelled", "Returned", "RTO"],
-  },
+export const deliveryFields: (StageValueField & { step?: FieldStep })[] = [
+  qtyField("deliveredQty", "Delivered Qty"),
+  qtyField("returnedQty", "Returned Qty"),
+  qtyField("rtoQty", "RTO Qty"),
+  qtyField("cancelledQty", "Cancelled Qty"),
+  moneyField("returnChargePerUnit", "Return Charge ₹/Unit"),
   { key: "deliveryReference", label: "Reference", type: "text" },
   { key: "deliveryDate", label: "Delivery Date", type: "date" },
   { key: "deliveryNotes", label: "Delivery Notes", textarea: true },
@@ -213,8 +242,11 @@ export const deliveryFields: StageValueField[] = [
 
 export function deliveryInitialValues(item: StageItem) {
   return {
-    deliveredQty: String(item.referenceQty || 0),
-    deliveryStatus: "",
+    deliveredQty: String(Math.floor(item.referenceQty || 0)),
+    returnedQty: "0",
+    rtoQty: "0",
+    cancelledQty: "0",
+    returnChargePerUnit: "0",
     deliveryReference: "",
     deliveryDate: "",
     deliveryNotes: "",
@@ -233,6 +265,7 @@ export function deliveryOrders(orders: DeliveryOrder[]): StageOrder[] {
       sku: item.product.sku,
       name: item.product.name,
       referenceQty: Number(item.dispatch_qty || item.packed_qty || 0),
+      dispatchQty: Number(item.dispatch_qty || item.packed_qty || 0),
     })),
   }));
 }
@@ -243,14 +276,28 @@ export async function deliveryPayload(
   const byOrder = groupByOrder(selected);
   for (const orderId of Object.keys(byOrder)) {
     const lines = byOrder[orderId];
+
+    // Quantity validation happens server-side
     const input: DeliveryConfirmInput = {
       orderId,
       lines: lines.map((s) => {
-        const status = s.values.deliveryStatus;
+        const delivered = Math.floor(Number(s.values.deliveredQty) || 0);
+        const returned = Math.floor(Number(s.values.returnedQty) || 0);
+        const rto = Math.floor(Number(s.values.rtoQty) || 0);
+        const cancelled = Math.floor(Number(s.values.cancelledQty) || 0);
+
+        // Auto-derive status from quantities using real dispatch qty from meta
+        const dispatchQty = s.meta?.dispatchQty ?? 0;
+        const derivedStatus = deriveDeliveryStatus(delivered, returned, rto, cancelled, dispatchQty);
+
         return {
           orderItemId: s.itemId,
-          deliveredQty: Number(s.values.deliveredQty || 0),
-          deliveryStatus: status ? (status as DeliveryStatus) : null,
+          deliveredQty: delivered,
+          returnedQty: returned,
+          rtoQty: rto,
+          cancelledQty: cancelled,
+          returnChargePerUnit: Number(s.values.returnChargePerUnit) || 0,
+          deliveryStatus: derivedStatus,
           deliveryReference: trimOrNull(s.values.deliveryReference),
           deliveryDate: trimOrNull(s.values.deliveryDate),
           deliveryNotes: trimOrNull(s.values.deliveryNotes),
