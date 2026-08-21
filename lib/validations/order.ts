@@ -33,19 +33,6 @@ export const orderEntrySchema = z.object({
 export type OrderEntryInput = z.infer<typeof orderEntrySchema>;
 
 // ============================================================
-// ORDER STAGE UPDATE
-// ============================================================
-
-export const orderStageSchema = z.enum([
-  "entry",
-  "purchase",
-  "packing",
-  "delivery",
-]);
-
-export type OrderStageInput = z.infer<typeof orderStageSchema>;
-
-// ============================================================
 // QUANTITY FLOW UPDATE
 // ============================================================
 

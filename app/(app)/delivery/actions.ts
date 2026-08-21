@@ -76,39 +76,81 @@ export async function confirmDelivery(
     };
   }
 
-  // Validate quantity constraints: delivered + returned + rto + cancelled <= dispatch_qty
-  const confirmedLineIds = parsed.data.lines.map((l) => l.orderItemId);
-  const { data: dispatchData, error: dispatchError } = await supabase
-    .from("order_items")
-    .select("id, dispatch_qty, selling_price")
-    .eq("order_id", parsed.data.orderId)
-    .eq("company_id", ctx.companyId)
-    .in("id", confirmedLineIds);
+  // ---- COMPLETENESS GUARD ----
+  // Every order item must be fully accounted for before advancing to completed.
+  // Fetch ALL items from the database — never trust the browser payload alone.
 
-  if (dispatchError) return { ok: false, error: mapDbError(dispatchError) };
-
-  const dispatchMap = new Map(
-    dispatchData?.map((d) => [d.id, { dispatchQty: Number(d.dispatch_qty), sellingPrice: Number(d.selling_price) }]) ?? [],
-  );
-
+  // 1. Check for duplicate line IDs in the submitted payload.
+  const seenIds = new Set<string>();
   for (const line of parsed.data.lines) {
-    const dispatch = dispatchMap.get(line.orderItemId);
-    if (!dispatch) continue;
-
-    const totalAccounted =
-      line.deliveredQty + line.returnedQty + line.rtoQty + line.cancelledQty;
-
-    if (totalAccounted > dispatch.dispatchQty + 0.001) {
+    if (seenIds.has(line.orderItemId)) {
       return {
         ok: false,
-        error: `Delivery outcomes (${totalAccounted}) exceed Dispatch Qty (${dispatch.dispatchQty}).`,
+        error: `Duplicate order item in payload: ${line.orderItemId}.`,
+      };
+    }
+    seenIds.add(line.orderItemId);
+  }
+
+  // 2. Fetch ALL order items for this order from the database.
+  const { data: allDbItems, error: allItemsError } = await supabase
+    .from("order_items")
+    .select("id, dispatch_qty, company_id, order_id")
+    .eq("order_id", parsed.data.orderId)
+    .eq("company_id", ctx.companyId);
+
+  if (allItemsError) return { ok: false, error: mapDbError(allItemsError) };
+  if (!allDbItems || allDbItems.length === 0) {
+    return { ok: false, error: "No order items found for this order." };
+  }
+
+  // 3. Verify every submitted line belongs to this exact order and company.
+  const dbItemIds = new Set(allDbItems.map((i) => i.id));
+  for (const line of parsed.data.lines) {
+    if (!dbItemIds.has(line.orderItemId)) {
+      return {
+        ok: false,
+        error: `Order item ${line.orderItemId} does not belong to this order or company.`,
+      };
+    }
+  }
+
+  // 4. Validate ALL items have fully accounted quantities.
+  // Build a map from submitted lines for quick lookup.
+  const submittedMap = new Map(
+    parsed.data.lines.map((l) => [l.orderItemId, l]),
+  );
+
+  const dispatchMap = new Map(
+    allDbItems.map((d) => [d.id, Number(d.dispatch_qty)]),
+  );
+
+  for (const dbItem of allDbItems) {
+    const submitted = submittedMap.get(dbItem.id);
+    const dispatchQty = dispatchMap.get(dbItem.id) ?? 0;
+
+    if (!submitted) {
+      // This item was not in the payload — not accounted for.
+      return {
+        ok: false,
+        error: `Order item ${dbItem.id.slice(0, 8)} is missing from the delivery confirmation. All items must be accounted for.`,
       };
     }
 
-    if (totalAccounted < dispatch.dispatchQty - 0.001) {
+    const totalAccounted =
+      submitted.deliveredQty + submitted.returnedQty + submitted.rtoQty + submitted.cancelledQty;
+
+    if (totalAccounted > dispatchQty + 0.001) {
       return {
         ok: false,
-        error: `${dispatch.dispatchQty - totalAccounted} qty still unaccounted for line ${line.orderItemId}.`,
+        error: `Item ${dbItem.id.slice(0, 8)}: delivery outcomes (${totalAccounted}) exceed Dispatch Qty (${dispatchQty}).`,
+      };
+    }
+
+    if (totalAccounted < dispatchQty - 0.001) {
+      return {
+        ok: false,
+        error: `Item ${dbItem.id.slice(0, 8)}: ${dispatchQty - totalAccounted} qty still unaccounted.`,
       };
     }
   }
@@ -135,26 +177,6 @@ export async function confirmDelivery(
     if (error) return { ok: false, error: mapDbError(error) };
   }
 
-  // Fetch all order items to calculate net payment (not just confirmed lines).
-  const { data: allItems, error: itemsError } = await supabase
-    .from("order_items")
-    .select("delivered_qty, returned_qty, rto_qty, cancelled_qty, return_charge_per_unit, selling_price")
-    .eq("order_id", parsed.data.orderId)
-    .eq("company_id", ctx.companyId);
-
-  if (itemsError) return { ok: false, error: mapDbError(itemsError) };
-
-  const amountExpected = calculateNetExpectedPayment(
-    allItems?.map((i) => ({
-      delivered_qty: Number(i.delivered_qty),
-      returned_qty: Number(i.returned_qty),
-      rto_qty: Number(i.rto_qty),
-      cancelled_qty: Number(i.cancelled_qty),
-      return_charge_per_unit: Number(i.return_charge_per_unit),
-      selling_price: Number(i.selling_price),
-    })) ?? [],
-  );
-
   // Get the latest delivery date from confirmed lines.
   const deliveryDate =
     parsed.data.lines
@@ -164,6 +186,26 @@ export async function confirmDelivery(
       .pop() ?? null;
 
   const now = new Date().toISOString();
+
+  // Calculate net payment from ALL order items (after updates are applied above).
+  const { data: paymentItems, error: paymentItemsError } = await supabase
+    .from("order_items")
+    .select("delivered_qty, returned_qty, rto_qty, cancelled_qty, return_charge_per_unit, selling_price")
+    .eq("order_id", parsed.data.orderId)
+    .eq("company_id", ctx.companyId);
+
+  if (paymentItemsError) return { ok: false, error: mapDbError(paymentItemsError) };
+
+  const amountExpected = calculateNetExpectedPayment(
+    paymentItems?.map((i) => ({
+      delivered_qty: Number(i.delivered_qty),
+      returned_qty: Number(i.returned_qty),
+      rto_qty: Number(i.rto_qty),
+      cancelled_qty: Number(i.cancelled_qty),
+      return_charge_per_unit: Number(i.return_charge_per_unit),
+      selling_price: Number(i.selling_price),
+    })) ?? [],
+  );
 
   // Idempotent payment handling: update existing or create new.
   const { data: existingPayment } = await supabase

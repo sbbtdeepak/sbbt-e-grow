@@ -88,10 +88,15 @@ export async function createExpectedPayment(
   );
   const amountReceived = parsed.data.amountReceived || 0;
 
+  // Status mirrors the database sync_payment_status trigger logic.
   let status: "expected" | "partial" | "received" | "pending" | "cancelled" = "expected";
-  if (amountReceived <= 0) status = "expected";
-  else if (amountReceived >= amountExpected) status = "received";
-  else status = "partial";
+  if (amountReceived >= amountExpected && amountExpected > 0) {
+    status = "received";
+  } else if (amountReceived > 0) {
+    status = "partial";
+  } else {
+    status = "expected";
+  }
 
   const { error } = await supabase.from("payments").insert({
     company_id: ctx.companyId,
@@ -153,10 +158,20 @@ export async function receivePayment(
   const amountExpected = existing.amount_expected;
   const amountReceived = parsed.data.amountReceived || 0;
 
+  // Status mirrors the database sync_payment_status trigger logic:
+  // - received >= expected AND expected > 0 → 'received'
+  // - received > 0 → 'partial'
+  // - otherwise → 'expected'
+  // For negative expected amounts (deductions), status stays 'expected'
+  // because the trigger requires amount_expected > 0 for 'received'.
   let status: "expected" | "partial" | "received" | "pending" | "cancelled" = "expected";
-  if (amountReceived <= 0) status = "expected";
-  else if (amountReceived >= amountExpected) status = "received";
-  else status = "partial";
+  if (amountReceived >= amountExpected && amountExpected > 0) {
+    status = "received";
+  } else if (amountReceived > 0) {
+    status = "partial";
+  } else {
+    status = "expected";
+  }
 
   const { error } = await supabase
     .from("payments")

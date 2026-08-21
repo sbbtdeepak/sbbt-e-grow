@@ -1190,7 +1190,7 @@ export type Database = {
           sku: string;
           product_name: string;
           ordered_qty: number;
-          delivered_qty: number;
+          cancelled_qty: number;
           delivery_status: string;
           delivery_notes: string;
         };
@@ -1207,7 +1207,7 @@ export type Database = {
           sku: string;
           product_name: string;
           ordered_qty: number;
-          delivered_qty: number;
+          rto_qty: number;
           delivery_notes: string;
         };
         Relationships: [];
